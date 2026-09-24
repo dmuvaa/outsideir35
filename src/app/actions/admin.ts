@@ -51,6 +51,31 @@ export async function archiveJobAsAdmin(jobId: string) {
   }
 }
 
+export async function markOutreachSent(email: string, name: string, companyName: string) {
+  try {
+    const { supabase } = await verifyAdmin();
+    const clean = email.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clean)) return { error: 'That contact has no usable email.' };
+    const { error } = await supabase.from('outreach_contacts').upsert({
+      email: clean,
+      name: name.slice(0, 255),
+      company_name: companyName.slice(0, 255),
+      sent_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'email' });
+    if (error) {
+      if (/outreach_contacts/.test(error.message)) {
+        return { error: 'Run supabase/migrations/20260925020000_outreach_contacts.sql, then mark the note as sent.' };
+      }
+      return { error: error.message };
+    }
+    revalidatePath('/dashboard/admin/outreach');
+    return { success: true };
+  } catch (error: any) {
+    return { error: error.message || 'Could not save that outreach' };
+  }
+}
+
 export async function setCompanyVerified(companyId: string, verified: boolean) {
   try {
     const { supabase } = await verifyAdmin();

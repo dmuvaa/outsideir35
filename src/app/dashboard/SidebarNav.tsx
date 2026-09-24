@@ -86,6 +86,9 @@ export default function SidebarNav({ role, isRecruiter, isCandidate, isAdmin }: 
               <Link href="/dashboard/admin/roles" style={getLinkStyle('/dashboard/admin/roles')}>
                 Roles
               </Link>
+              <Link href="/dashboard/admin/outreach" style={getLinkStyle('/dashboard/admin/outreach')}>
+                Outreach
+              </Link>
               <Link href="/dashboard/admin/scrape" style={getLinkStyle('/dashboard/admin/scrape')}>
                 LinkedIn scrape
               </Link>

@@ -7,6 +7,7 @@ import { completeProfile, logout, register } from '@/app/actions/auth';
 
 function SignupFields({ email }: { email: string }) {
   const searchParams = useSearchParams();
+  const invited = searchParams?.get('invite') === '1';
   const [role, setRole] = useState<'candidate' | 'recruiter'>(searchParams?.get('role') === 'recruiter' ? 'recruiter' : 'candidate');
   const [gdprConsent, setGdprConsent] = useState(false);
   const [error, setError] = useState('');
@@ -50,27 +51,29 @@ function SignupFields({ email }: { email: string }) {
   return (
     <>
       <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-        <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>Create an account</h2>
+        <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>{invited ? 'Post your contract roles' : 'Create an account'}</h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-          Join OutsideIR35 with an email and password.
+          {invited
+            ? 'Add your name and work email, then list the Outside IR35 roles you are hiring for.'
+            : 'Join OutsideIR35 with an email and password.'}
         </p>
       </div>
       {error && <ErrorBanner message={error} />}
       <form action={handleRegisterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <RoleToggle role={role} setRole={setRole} />
-        <NameFields />
+        <NameFields firstName={searchParams?.get('firstName') || ''} lastName={searchParams?.get('lastName') || ''} />
         <div className="filter-group">
           <label className="filter-title" style={{ fontSize: '11px' }}>Email Address</label>
-          <input name="email" type="email" autoComplete="email" defaultValue={email} placeholder="e.g. contractor@example.com" required />
+          <input name="email" type="email" autoComplete="email" defaultValue={email || searchParams?.get('email') || ''} placeholder="e.g. contractor@example.com" required />
         </div>
         <div className="filter-group">
           <label className="filter-title" style={{ fontSize: '11px' }}>Password</label>
           <input name="password" type="password" autoComplete="new-password" placeholder="Minimum 8 characters" minLength={8} required />
         </div>
-        {role === 'recruiter' && <CompanyField />}
+        {role === 'recruiter' && <CompanyField companyName={searchParams?.get('companyName') || ''} />}
         <ConsentField checked={gdprConsent} onChange={() => setGdprConsent(!gdprConsent)} />
         <button type="submit" disabled={isPending} className="btn btn-primary" style={{ width: '100%', marginTop: '8px' }}>
-          {isPending ? 'Creating account...' : 'Register account'}
+          {isPending ? 'Creating account...' : invited ? 'Continue' : 'Register account'}
         </button>
       </form>
       <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '13px', color: 'var(--text-secondary)' }}>
@@ -116,7 +119,7 @@ function ProfileFields() {
       <form action={handleProfileSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <RoleToggle role={role} setRole={setRole} />
         <NameFields />
-        {role === 'recruiter' && <CompanyField />}
+        {role === 'recruiter' && <CompanyField companyName="" />}
         <ConsentField checked={gdprConsent} onChange={() => setGdprConsent(!gdprConsent)} />
         <button type="submit" disabled={isPending} className="btn btn-primary" style={{ width: '100%', marginTop: '8px' }}>
           {isPending ? 'Saving...' : 'Continue'}
@@ -147,26 +150,26 @@ function RoleToggle({ role, setRole }: { role: 'candidate' | 'recruiter'; setRol
   );
 }
 
-function NameFields() {
+function NameFields({ firstName = '', lastName = '' }: { firstName?: string; lastName?: string }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
       <div className="filter-group">
         <label className="filter-title" style={{ fontSize: '11px' }}>First Name</label>
-        <input name="firstName" type="text" autoComplete="given-name" placeholder="e.g. Sarah" required />
+        <input name="firstName" type="text" autoComplete="given-name" defaultValue={firstName} placeholder="e.g. Sarah" required />
       </div>
       <div className="filter-group">
         <label className="filter-title" style={{ fontSize: '11px' }}>Last Name</label>
-        <input name="lastName" type="text" autoComplete="family-name" placeholder="e.g. Jenkins" required />
+        <input name="lastName" type="text" autoComplete="family-name" defaultValue={lastName} placeholder="e.g. Jenkins" required />
       </div>
     </div>
   );
 }
 
-function CompanyField() {
+function CompanyField({ companyName = '' }: { companyName?: string }) {
   return (
     <div className="filter-group fade-in">
       <label className="filter-title" style={{ fontSize: '11px' }}>Company Name</label>
-      <input name="companyName" type="text" autoComplete="organization" placeholder="e.g. Tech Corp Ltd" required />
+      <input name="companyName" type="text" autoComplete="organization" defaultValue={companyName} placeholder="e.g. Tech Corp Ltd" required />
     </div>
   );
 }
