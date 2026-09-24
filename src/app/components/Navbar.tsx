@@ -71,7 +71,7 @@ export default function Navbar({ user }: NavbarProps) {
               <Link href="/companies" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/companies' ? 'active' : ''}`}>
                 Companies
               </Link>
-              <Link href="/login?next=%2Fregister%3Frole%3Drecruiter" onClick={() => setMobileMenuOpen(false)} className={`nav-link`}>
+              <Link href="/register?role=recruiter" onClick={() => setMobileMenuOpen(false)} className={`nav-link`}>
                 Post a Contract
               </Link>
               <Link href="/pricing" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/pricing' ? 'active' : ''}`}>
@@ -134,7 +134,7 @@ export default function Navbar({ user }: NavbarProps) {
               <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="btn btn-secondary btn-sm">
                 Sign In
               </Link>
-              <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="btn btn-primary btn-sm">
+              <Link href="/register" onClick={() => setMobileMenuOpen(false)} className="btn btn-primary btn-sm">
                 Get started
               </Link>
             </>

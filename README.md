@@ -38,19 +38,16 @@ The app needs a Node.js host (Vercel, or `npm run build` then `npm run start`). 
 - `NEXT_PUBLIC_SITE_URL` — the public https origin, used for the sitemap
 - `APIFY_TOKEN` — only if admins run live scrapes from the dashboard
 
-Sign-in is an email code. There is no password. In Supabase → Authentication → Email Templates, replace the Magic Link template body with the code only:
-
-```html
-<h2>Your OutsideIR35 code</h2>
-<p>Enter this code to sign in: {{ .Token }}</p>
-```
+Sign-in is email and password. A normal login does not send email. In Supabase, open Authentication → Sign In / Providers → Email and turn off **Confirm email**, so creating an account does not send mail either. Password reset still uses Supabase email, which is rate-limited on the built-in sender.
 
 Apply the SQL files in `supabase/migrations/` in filename order, including `20260924153000_otp_auth.sql`.
 
 In the Supabase dashboard, set Auth → URL configuration:
 
-- Site URL: the same value as `NEXT_PUBLIC_SITE_URL`
-- Redirect URLs: `https://YOUR_DOMAIN/auth/callback` and `http://localhost:3000/auth/callback`
+- Site URL: `https://outsideir35.vercel.app`
+- Redirect URLs: `https://outsideir35.vercel.app/auth/callback` and `http://localhost:3000/auth/callback`
+
+Set `NEXT_PUBLIC_SITE_URL` to `https://outsideir35.vercel.app` on Vercel.
 
 ```bash
 npm run build

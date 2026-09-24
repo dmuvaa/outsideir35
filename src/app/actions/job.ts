@@ -88,7 +88,7 @@ export async function subscribeToJobAlerts(formData: FormData) {
   if (!user) {
     return {
       error: 'Create a free contractor account to receive Outside IR35 alerts.',
-      redirect: `/login?email=${encodeURIComponent(email)}&next=${encodeURIComponent('/register')}`,
+      redirect: `/register?email=${encodeURIComponent(email)}`,
     };
   }
 

@@ -16,7 +16,7 @@ function normalizeEmail(value: FormDataEntryValue | null) {
   return String(value || '').trim().toLowerCase();
 }
 
-function safeProfilePath(value: FormDataEntryValue | null) {
+function safeProfilePath(value: FormDataEntryValue | string | null) {
   const raw = String(value || '');
   if (!raw.startsWith('/') || raw.startsWith('//')) return '/register';
   let url: URL;
@@ -128,49 +128,132 @@ async function completeAccountSetup(
   return { error: null };
 }
 
-export async function sendSignInCode(formData: FormData) {
+async function siteOrigin() {
+  const headerOrigin = (await headers()).get('origin');
+  return headerOrigin || process.env.NEXT_PUBLIC_SITE_URL || 'https://outsideir35.vercel.app';
+}
+
+function passwordError(password: string) {
+  if (password.length < 8) return 'Password must be at least 8 characters';
+  return null;
+}
+
+export async function pathAfterSignIn(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  requestedNext: string
+) {
+  if (requestedNext === '/reset-password') return '/reset-password';
+  if (await needsProfile(supabase, userId)) return safeProfilePath(requestedNext);
+  const { data: { user } } = await supabase.auth.getUser();
+  const role = user ? await getDbRole(supabase, user) : 'candidate';
+  return dashboardFor(role);
+}
+
+export async function login(formData: FormData) {
+  const email = normalizeEmail(formData.get('email'));
+  const password = String(formData.get('password') || '');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !password) {
+    return { error: 'Enter your email and password' };
+  }
+
+  const supabase = createClient(await cookies());
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error || !data.user) return { error: 'Incorrect email or password' };
+
+  redirect(await pathAfterSignIn(supabase, data.user.id, String(formData.get('next') || '')));
+}
+
+export async function register(formData: FormData) {
+  const email = normalizeEmail(formData.get('email'));
+  const password = String(formData.get('password') || '');
+  const consent = formData.get('consent') === 'on' || formData.get('consent') === 'true';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: 'Enter a valid email address' };
+  }
+  const weak = passwordError(password);
+  if (weak) return { error: weak };
+
+  const parsed = validateRegisterInput({
+    role: formData.get('role') as string,
+    firstName: formData.get('firstName') as string,
+    lastName: formData.get('lastName') as string,
+    companyName: formData.get('companyName') as string,
+    consent,
+  });
+  if (parsed.error) return { error: parsed.error };
+
+  const origin = await siteOrigin();
+  const supabase = createClient(await cookies());
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: { emailRedirectTo: `${origin}/auth/callback` },
+  });
+  if (error) {
+    if (error.message.toLowerCase().includes('already')) {
+      return { error: 'This email address is already registered.' };
+    }
+    return { error: error.message };
+  }
+  if (!data.user) return { error: 'Registration failed' };
+  if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+    return { error: 'This email address is already registered.' };
+  }
+  if (!data.session) {
+    return { needsConfirmation: true as const };
+  }
+
+  const role = parsed.role as string;
+  const setup = await completeAccountSetup(supabase, data.user.id, {
+    email,
+    role,
+    firstName: String(formData.get('firstName') || ''),
+    lastName: String(formData.get('lastName') || ''),
+    companyName: String(formData.get('companyName') || ''),
+  });
+  if (setup.error) return setup;
+  redirect(dashboardFor(role));
+}
+
+export async function requestPasswordReset(formData: FormData) {
   const email = normalizeEmail(formData.get('email'));
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { error: 'Enter a valid email address' };
   }
 
-  const supabase = createClient(await cookies());
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: { shouldCreateUser: true },
+  const origin = await siteOrigin();
+  const jar = await cookies();
+  jar.set('oi_auth_next', '/reset-password', {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    maxAge: 60 * 15,
   });
 
+  const supabase = createClient(jar);
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${origin}/auth/callback`,
+  });
   if (error) return { error: error.message };
   return { sent: true as const };
 }
 
-export async function verifySignInCode(formData: FormData) {
-  const email = normalizeEmail(formData.get('email'));
-  const token = String(formData.get('token') || '').replace(/\s/g, '');
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return { error: 'Enter a valid email address' };
-  }
-  if (!/^\d{6,8}$/.test(token)) {
-    return { error: 'Enter the code from your email' };
-  }
+export async function updatePassword(formData: FormData) {
+  const password = String(formData.get('password') || '');
+  const confirm = String(formData.get('confirm') || '');
+  const weak = passwordError(password);
+  if (weak) return { error: weak };
+  if (password !== confirm) return { error: 'Passwords do not match' };
 
   const supabase = createClient(await cookies());
-  const { data, error } = await supabase.auth.verifyOtp({
-    email,
-    token,
-    type: 'email',
-  });
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Open the reset link from your email, then choose a new password.' };
 
-  if (error || !data.user) {
-    return { error: error?.message || 'That code is invalid or expired' };
-  }
-
-  if (await needsProfile(supabase, data.user.id)) {
-    redirect(safeProfilePath(formData.get('next')));
-  }
-
-  const role = await getDbRole(supabase, data.user);
-  redirect(dashboardFor(role));
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) return { error: error.message };
+  redirect(await pathAfterSignIn(supabase, user.id, ''));
 }
 
 export async function completeProfile(formData: FormData) {
@@ -186,7 +269,7 @@ export async function completeProfile(formData: FormData) {
 
   const supabase = createClient(await cookies());
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Enter the email code before finishing your profile' };
+  if (!user) return { error: 'Sign in before finishing your profile' };
 
   const role = parsed.role as string;
   const setup = await completeAccountSetup(supabase, user.id, {

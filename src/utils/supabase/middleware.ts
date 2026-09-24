@@ -75,7 +75,7 @@ export async function updateSession(request: NextRequest) {
     if (!profileReady && (path.startsWith('/dashboard') || path.startsWith('/login'))) {
       return redirectTo('/register');
     }
-    if (profileReady && (path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/forgot-password') || path.startsWith('/reset-password'))) {
+    if (profileReady && (path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/forgot-password'))) {
       return redirectTo(dashboardFor(role));
     }
     
@@ -96,12 +96,8 @@ export async function updateSession(request: NextRequest) {
     if (path === '/admin') return redirectTo('/dashboard/admin');
     
   } else {
-    if (path.startsWith('/forgot-password') || path.startsWith('/reset-password')) {
-      return redirectTo('/login');
-    }
-    if (path.startsWith('/register')) {
-      const next = `${path}${request.nextUrl.search}`;
-      return redirectTo(`/login?next=${encodeURIComponent(next)}`);
+    if (path.startsWith('/reset-password')) {
+      return redirectTo('/forgot-password');
     }
     // Redirect to login if unauthenticated and trying to access a protected route
     if (

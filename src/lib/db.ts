@@ -856,7 +856,7 @@ class SupabaseDB {
   }
 
   public async login(_email: string, _password: string): Promise<{ id: string; email: string; role: 'candidate' | 'recruiter' | 'admin' }> {
-    throw new Error('Password sign-in is disabled. Use the email code on /login.');
+    throw new Error('Sign in on /login.');
   }
 
   public async logout(): Promise<void> {
@@ -868,7 +868,7 @@ class SupabaseDB {
   }
 
   public async register(_email: string, _password: string, _role: 'candidate' | 'recruiter' | 'admin'): Promise<{ id: string; email: string; role: 'candidate' | 'recruiter' | 'admin' }> {
-    throw new Error('Password registration is disabled. Use the email code on /login.');
+    throw new Error('Create an account on /register.');
   }
 
   public async uploadCV(file: File): Promise<string> {
