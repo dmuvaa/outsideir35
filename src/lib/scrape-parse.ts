@@ -40,6 +40,7 @@ export type ParsedLead = {
   clearanceLevel: ClearanceLevel;
   contractLength: string;
   applyUrl: string;
+  applyEmail: string;
   postedAt: string | null;
   classification: LeadClassification;
   reasons: string[];
@@ -528,12 +529,19 @@ function confidenceFor(classification: LeadClassification, hasTitle: boolean, ha
   return 25;
 }
 
-function leadFromFields(input: Omit<ParsedLead, 'descriptionHtml'>): ParsedLead {
+function leadFromFields(input: Omit<ParsedLead, 'descriptionHtml' | 'applyEmail'>): ParsedLead {
   return {
     ...input,
+    applyEmail: extractApplyEmail(`${input.description}\n${input.applyUrl}`),
     location: input.location || (input.remoteType === 'remote' ? 'Remote, UK' : 'United Kingdom'),
     descriptionHtml: toJobHtml(input.description, input.rateNote),
   };
+}
+
+export function extractApplyEmail(text: string): string {
+  const matches = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || [];
+  const email = matches.find((value) => !/linkedin\.com$/i.test(value.split('@')[1] || ''));
+  return email?.toLowerCase() || '';
 }
 
 function fingerprint(lead: ParsedLead): string {

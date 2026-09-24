@@ -123,6 +123,19 @@ test('email apply paths and missing rates stay in review', () => {
   assert.equal(lead.companyName, 'g2 Recruitment');
   assert.match(lead.location, /Woking/i);
   assert.equal(lead.classification, 'needs_review');
+  assert.equal(lead.applyEmail, 'matthew.noon@g2recruitment.com');
+});
+
+test('a role without an email is still kept for review', () => {
+  const [lead] = parseLinkedInPost({
+    id: '7b',
+    content: 'Senior Platform Engineer, outside IR35, £500 per day, London hybrid. Apply via the LinkedIn job link.',
+    author: { name: 'Alex Recruiter' },
+    linkedinUrl: 'https://www.linkedin.com/posts/alex',
+  });
+
+  assert.equal(lead.applyEmail, '');
+  assert.notEqual(lead.classification, 'reject');
 });
 
 test('numbered Outside IR35 lines split out of an aggregator list', () => {

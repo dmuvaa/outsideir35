@@ -22,8 +22,9 @@ export default async function AdminScrapePage() {
     <div className="fade-in">
       <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>LinkedIn scrape</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', maxWidth: '720px' }}>
-        Import Apify posts, keep only clear Outside IR35 roles, then publish them to the candidate board.
-        Nothing goes live until you approve it.
+        Import Apify posts, keep Outside IR35 roles, and publish the ones you want on the candidate board.
+        Posts that already include an application email are marked. Roles without one can still be published.
+        The client email you add is for your own outreach and is not shown to candidates.
       </p>
       {error && (
         <p style={{ color: 'var(--color-inside)', marginBottom: '16px' }}>

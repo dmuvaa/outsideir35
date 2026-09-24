@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { importScrapedPosts, startApifyScrape, ingestApifyRun, ingestApifyDataset, publishScrapedLead, rejectScrapedLead } from '@/app/actions/scrape';
 import { formatDayRate } from '@/lib/platform';
+import { extractApplyEmail } from '@/lib/scrape-parse';
 
 type Lead = {
   id: string;
@@ -20,6 +21,8 @@ type Lead = {
   clearance_level: string;
   contract_length: string | null;
   apply_url: string | null;
+  apply_email: string | null;
+  contact_email: string | null;
   source_url: string | null;
   classification: 'publishable' | 'needs_review' | 'reject';
   classification_reason: string | null;
@@ -28,7 +31,7 @@ type Lead = {
   published_job_id: string | null;
 };
 
-const FILTERS = ['pending', 'publishable', 'needs_review', 'reject', 'published', 'rejected'] as const;
+const FILTERS = ['pending', 'with_email', 'publishable', 'needs_review', 'reject', 'published', 'rejected'] as const;
 
 export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[]; apifyConfigured: boolean }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('pending');
@@ -39,6 +42,7 @@ export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[];
 
   const visible = leads.filter((lead) => {
     if (filter === 'pending') return lead.status === 'pending';
+    if (filter === 'with_email') return lead.status === 'pending' && Boolean(leadEmail(lead));
     if (filter === 'published') return lead.status === 'published';
     if (filter === 'rejected') return lead.status === 'rejected';
     return lead.status === 'pending' && lead.classification === filter;
@@ -46,6 +50,7 @@ export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[];
 
   const counts = {
     pending: leads.filter((l) => l.status === 'pending').length,
+    with_email: leads.filter((l) => l.status === 'pending' && Boolean(leadEmail(l))).length,
     publishable: leads.filter((l) => l.status === 'pending' && l.classification === 'publishable').length,
     needs_review: leads.filter((l) => l.status === 'pending' && l.classification === 'needs_review').length,
     reject: leads.filter((l) => l.status === 'pending' && l.classification === 'reject').length,
@@ -172,14 +177,21 @@ export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[];
           No leads in this view.
         </div>
       ) : (
-        visible.map((lead) => <LeadCard key={lead.id} lead={lead} onMessage={setMessage} />)
+        [...visible]
+          .sort((a, b) => Number(Boolean(leadEmail(b))) - Number(Boolean(leadEmail(a))))
+          .map((lead) => <LeadCard key={lead.id} lead={lead} onMessage={setMessage} />)
       )}
     </div>
   );
 }
 
+function leadEmail(lead: Lead) {
+  return lead.apply_email || lead.contact_email || extractApplyEmail(`${lead.description_html || ''}\n${lead.apply_url || ''}`);
+}
+
 function LeadCard({ lead, onMessage }: { lead: Lead; onMessage: (value: string) => void }) {
   const [busy, setBusy] = useState(false);
+  const foundEmail = lead.apply_email || extractApplyEmail(`${lead.description_html || ''}\n${lead.apply_url || ''}`);
   const tone = lead.classification === 'publishable'
     ? 'var(--color-outside)'
     : lead.classification === 'reject'
@@ -192,10 +204,19 @@ function LeadCard({ lead, onMessage }: { lead: Lead; onMessage: (value: string) 
       style={{ padding: '20px', display: 'grid', gap: '12px', borderLeft: `4px solid ${tone}` }}
       onSubmit={async (e) => {
         e.preventDefault();
+        const submitter = (e.nativeEvent as SubmitEvent).submitter;
+        const decision = submitter instanceof HTMLButtonElement && submitter.name === 'decision'
+          ? submitter.value
+          : 'publish';
+        const data = new FormData(e.currentTarget);
         setBusy(true);
-        const res = await publishScrapedLead(lead.id, new FormData(e.currentTarget));
+        const res = decision === 'reject'
+          ? await rejectScrapedLead(lead.id, String(data.get('contact_email') || ''))
+          : await publishScrapedLead(lead.id, data);
         setBusy(false);
-        onMessage(res.error || `Published “${lead.title}”. Candidates can see it on /jobs.`);
+        onMessage(res.error || (decision === 'reject'
+          ? 'Rejected — it will not appear on the board.'
+          : `Published “${lead.title}”. Candidates can see it on /jobs.`));
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
@@ -226,6 +247,7 @@ function LeadCard({ lead, onMessage }: { lead: Lead; onMessage: (value: string) 
         </label>
         <Field name="contract_length" label="Length" defaultValue={lead.contract_length || ''} />
         <Field name="apply_url" label="Apply URL" defaultValue={lead.apply_url || ''} />
+        <Field name="contact_email" label="Client email" defaultValue={lead.contact_email || foundEmail} type="email" />
         <input type="hidden" name="ir35_status" value="outside" />
         <input type="hidden" name="clearance_level" value={lead.clearance_level} />
       </div>
@@ -238,28 +260,31 @@ function LeadCard({ lead, onMessage }: { lead: Lead; onMessage: (value: string) 
         style={{ width: '100%', fontSize: '12px' }}
       />
 
+      <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px', color: foundEmail ? 'var(--color-outside)' : 'var(--text-muted)' }}>
+        <input type="checkbox" checked={Boolean(foundEmail)} readOnly disabled />
+        {foundEmail ? `Application email found: ${foundEmail}` : 'No application email in this post. You can still publish it.'}
+      </label>
+      <p style={{ margin: 0, fontSize: '12px', color: 'var(--text-muted)' }}>
+        Client email is only for you, so you can ask them to post the role here. Leave it blank if you do not have one.
+      </p>
+
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
         {lead.status === 'published' ? (
           <Link href="/jobs" className="btn btn-primary btn-sm">View board</Link>
         ) : lead.classification === 'reject' ? null : (
-          <button className="btn btn-primary btn-sm" type="submit" disabled={busy}>
-            {busy ? 'Publishing…' : 'Publish to candidates'}
+          <button className="btn btn-primary btn-sm" type="submit" name="decision" value="publish" disabled={busy}>
+            {busy ? 'Saving…' : 'Publish to candidates'}
           </button>
         )}
         {lead.status === 'pending' && (
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              const res = await rejectScrapedLead(lead.id);
-              setBusy(false);
-              onMessage(res.error || 'Rejected — it will not appear on the board.');
-            }}
-          >
+          <button className="btn btn-secondary btn-sm" type="submit" name="decision" value="reject" disabled={busy}>
             Reject
           </button>
+        )}
+        {(lead.contact_email || foundEmail) && (
+          <a href={`mailto:${lead.contact_email || foundEmail}`} className="btn btn-secondary btn-sm">
+            Email this client
+          </a>
         )}
         {lead.source_url && (
           <a href={lead.source_url} target="_blank" rel="noreferrer" className="btn btn-secondary btn-sm">

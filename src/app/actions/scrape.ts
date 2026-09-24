@@ -36,6 +36,7 @@ function leadRow(lead: ParsedLead, raw: unknown) {
     clearance_level: lead.clearanceLevel,
     contract_length: lead.contractLength,
     apply_url: lead.applyUrl,
+    apply_email: lead.applyEmail || null,
     posted_at: lead.postedAt,
     classification: lead.classification,
     classification_reason: lead.reasons.join(' · '),
@@ -59,10 +60,19 @@ async function upsertLeads(supabase: ReturnType<typeof createClient>, posts: Lin
     counts[lead.classification] += 1;
     const parentId = lead.sourcePostId.split(':')[0];
     const row = leadRow(lead, rawById.get(parentId) || { sourcePostId: lead.sourcePostId });
-    const { error, data } = await supabase
+    let { error, data } = await supabase
       .from('scraped_jobs')
       .upsert(row, { onConflict: 'source_post_id', ignoreDuplicates: true })
       .select('id');
+    if (error && /apply_email/.test(error.message)) {
+      const { apply_email: _applyEmail, ...withoutEmail } = row;
+      const retry = await supabase
+        .from('scraped_jobs')
+        .upsert(withoutEmail, { onConflict: 'source_post_id', ignoreDuplicates: true })
+        .select('id');
+      error = retry.error;
+      data = retry.data;
+    }
     if (error) throw new Error(error.message);
     if (data?.length) stored += 1;
   }
@@ -179,16 +189,19 @@ export async function ingestApifyRun(runId: string) {
   }
 }
 
-export async function rejectScrapedLead(leadId: string) {
+export async function rejectScrapedLead(leadId: string, contactEmail: string) {
   try {
     const { supabase, user } = await verifyAdmin();
+    const email = cleanContactEmail(contactEmail);
+    if (email.error) return { error: email.error };
     const { error } = await supabase.from('scraped_jobs').update({
       status: 'rejected',
+      contact_email: email.value,
       reviewed_by: user.id,
       reviewed_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }).eq('id', leadId);
-    if (error) throw new Error(error.message);
+    if (error) return { error: contactEmailError(error.message) };
     revalidatePath('/dashboard/admin/scrape');
     return { success: true };
   } catch (error: any) {
@@ -219,6 +232,8 @@ export async function publishScrapedLead(leadId: string, formData: FormData) {
     const max = Number(formData.get('day_rate_max') || lead.day_rate_max || min || 0) || null;
     const companyName = String(formData.get('company_name') || lead.company_name || lead.recruiter_name || 'LinkedIn recruiter').trim();
     const applyUrl = String(formData.get('apply_url') || lead.apply_url || lead.source_url || '').trim();
+    const email = cleanContactEmail(String(formData.get('contact_email') || ''));
+    if (email.error) return { error: email.error };
     const remoteType = String(formData.get('remote_type') || lead.remote_type || 'hybrid');
     const clearance = String(formData.get('clearance_level') || lead.clearance_level || 'none');
     const contractLength = String(formData.get('contract_length') || lead.contract_length || '');
@@ -263,7 +278,7 @@ export async function publishScrapedLead(leadId: string, formData: FormData) {
       job = retry.data;
     }
 
-    await supabase.from('scraped_jobs').update({
+    const reviewed = {
       status: 'published',
       published_job_id: job!.id,
       title,
@@ -279,7 +294,20 @@ export async function publishScrapedLead(leadId: string, formData: FormData) {
       reviewed_by: user.id,
       reviewed_at: now.toISOString(),
       updated_at: now.toISOString(),
+    };
+    const saved = await supabase.from('scraped_jobs').update({
+      ...reviewed,
+      contact_email: email.value,
+      apply_email: lead.apply_email || null,
     }).eq('id', leadId);
+    if (saved.error && /contact_email|apply_email/.test(saved.error.message)) {
+      const retry = await supabase.from('scraped_jobs').update(reviewed).eq('id', leadId);
+      if (retry.error) return { error: retry.error.message };
+      revalidatePath('/dashboard/admin/scrape');
+      revalidatePath('/jobs');
+      return { error: contactEmailError(saved.error.message) };
+    }
+    if (saved.error) return { error: saved.error.message };
 
     revalidatePath('/dashboard/admin/scrape');
     revalidatePath('/jobs');
@@ -289,6 +317,22 @@ export async function publishScrapedLead(leadId: string, formData: FormData) {
   } catch (error: any) {
     return { error: error.message };
   }
+}
+
+function contactEmailError(message: string) {
+  if (/contact_email|apply_email/.test(message)) {
+    return 'Run supabase/migrations/20260924233000_scraped_job_contact_email.sql in the Supabase SQL editor, then save again.';
+  }
+  return message;
+}
+
+function cleanContactEmail(value: string) {
+  const email = value.trim().toLowerCase();
+  if (!email) return { value: null as string | null };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { value: null, error: 'Enter a valid client email, or leave it blank.' };
+  }
+  return { value: email };
 }
 
 async function findOrCreateCompany(supabase: ReturnType<typeof createClient>, name: string) {
