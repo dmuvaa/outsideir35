@@ -5,6 +5,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getDbRole } from '@/lib/auth-role';
 import { slugify, validateRegisterInput } from '@/lib/platform';
+import type { EmailOtpType } from '@supabase/supabase-js';
 
 function dashboardFor(role: string) {
   if (role === 'recruiter') return '/dashboard/recruiter';
@@ -62,7 +63,10 @@ async function completeAccountSetup(
 
   if (existing?.role !== 'admin' && input.role !== existing?.role) {
     const { error } = await supabase.from('users').update({ role: input.role }).eq('id', userId);
-    if (error) return { error: error.message };
+    if (error) {
+      console.error('Error updating account role:', error);
+      return { error: 'We could not finish setting up your account.' };
+    }
   }
 
   const { data: consent } = await supabase
@@ -190,12 +194,7 @@ export async function register(formData: FormData) {
     password,
     options: { emailRedirectTo: `${origin}/auth/callback` },
   });
-  if (error) {
-    if (error.message.toLowerCase().includes('already')) {
-      return { error: 'This email address is already registered.' };
-    }
-    return { error: error.message };
-  }
+  if (error) return { error: publicAuthError(error.message) };
   if (!data.user) return { error: 'Registration failed' };
   if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
     return { error: 'This email address is already registered.' };
@@ -236,7 +235,7 @@ export async function requestPasswordReset(formData: FormData) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
     redirectTo: `${origin}/auth/callback`,
   });
-  if (error) return { error: error.message };
+  if (error) return { error: publicAuthError(error.message) };
   return { sent: true as const };
 }
 
@@ -249,11 +248,51 @@ export async function updatePassword(formData: FormData) {
 
   const supabase = createClient(await cookies());
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: 'Open the reset link from your email, then choose a new password.' };
+  if (!user) return { error: 'Sign in again, then choose a new password.' };
 
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) return { error: error.message };
+  if (error) return { error: 'Choose a different password and try again.' };
   redirect(await pathAfterSignIn(supabase, user.id, ''));
+}
+
+export async function continueFromEmail(formData: FormData) {
+  const code = String(formData.get('code') || '');
+  const tokenHash = String(formData.get('token_hash') || '');
+  const type = String(formData.get('type') || '');
+  const jar = await cookies();
+  const requestedNext = jar.get('oi_auth_next')?.value || '';
+  const supabase = createClient(jar);
+
+  let userId: string | null = null;
+  if (code) {
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) userId = data.user?.id ?? null;
+  } else if (tokenHash && type) {
+    const { data, error } = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: type as EmailOtpType,
+    });
+    if (!error) userId = data.user?.id ?? null;
+  }
+
+  if (!userId) {
+    const { data: { user } } = await supabase.auth.getUser();
+    userId = user?.id ?? null;
+  }
+
+  if (!userId) redirect('/login?notice=confirmed');
+
+  jar.delete('oi_auth_next');
+  redirect(await pathAfterSignIn(supabase, userId, requestedNext));
+}
+
+function publicAuthError(message: string) {
+  const lower = message.toLowerCase();
+  if (lower.includes('already')) return 'This email address is already registered.';
+  if (lower.includes('rate') || lower.includes('too many') || lower.includes('seconds')) {
+    return 'Please wait a few minutes and try again.';
+  }
+  return 'Something went wrong. Please try again.';
 }
 
 export async function completeProfile(formData: FormData) {

@@ -38,11 +38,11 @@ function SignupFields({ email }: { email: string }) {
   if (needsConfirmation) {
     return (
       <div style={{ textAlign: 'center' }}>
-        <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>Confirm your email</h2>
+        <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>Check your email</h2>
         <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-          Supabase still has email confirmation turned on, so this account is not active until that message is opened. After confirming, sign in with your password.
+          Open the link we sent to finish creating your account. Then sign in with your password.
         </p>
-        <Link href="/login" className="btn btn-primary" style={{ marginTop: '24px' }}>Go to sign in</Link>
+        <Link href="/login" className="btn btn-primary" style={{ marginTop: '24px' }}>Sign in</Link>
       </div>
     );
   }

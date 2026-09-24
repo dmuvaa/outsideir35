@@ -8,9 +8,9 @@ import { login } from '@/app/actions/auth';
 function LoginForm() {
   const searchParams = useSearchParams();
   const next = searchParams?.get('next') || '';
-  const linkFailed = searchParams?.get('error') === 'link';
+  const confirmed = searchParams?.get('notice') === 'confirmed' || searchParams?.get('error') === 'link';
   const [email, setEmail] = useState(searchParams?.get('email') || '');
-  const [error, setError] = useState(linkFailed ? 'That link is invalid or expired. Request a new one.' : '');
+  const [error, setError] = useState('');
   const [isPending, setIsPending] = useState(false);
 
   async function handleLogin(formData: FormData) {
@@ -29,7 +29,9 @@ function LoginForm() {
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>Welcome back</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-            Sign in with the email and password for your OutsideIR35 account.
+            {confirmed
+              ? 'Your email is confirmed. Sign in with your password.'
+              : 'Sign in with the email and password for your OutsideIR35 account.'}
           </p>
         </div>
 
