@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { Job } from '@/lib/db';
 import { getProxyImageUrl } from '@/lib/image-utils';
 import { isLiveJob } from '@/lib/platform';
+import { parentNameFor } from '@/lib/job-taxonomy';
 
 const JOB_SELECT = `
   id, title, slug, company_id, description_html,
@@ -12,8 +13,18 @@ const JOB_SELECT = `
   expires_at, views_count, applications_count,
   source, source_url, external_apply_url,
   companies ( name, logo_url, industry, slug, is_verified, headquarters_location ),
-  job_skills ( skills ( name ) )
+  job_skills ( skills ( name ) ),
+  job_categories ( categories ( name, slug ) )
 `;
+
+function jobCategoryName(job: any) {
+  const links = Array.isArray(job.job_categories) ? job.job_categories : [];
+  const names = links.map((link: any) => {
+    const category = Array.isArray(link?.categories) ? link.categories[0] : link?.categories;
+    return parentNameFor(category?.slug) || category?.name || '';
+  }).filter(Boolean);
+  return names[0] || '';
+}
 
 function mapJob(job: any): Job & {
   companySlug?: string;
@@ -47,7 +58,7 @@ function mapJob(job: any): Job & {
     remoteType: job.remote_type,
     clearanceLevel: job.clearance_level,
     location: job.location || '',
-    industry: companies?.industry || 'Technology',
+    industry: jobCategoryName(job) || companies?.industry || '',
     skills: job.job_skills?.map((js: any) => js.skills?.name).filter(Boolean) || [],
     createdAt: job.created_at,
     expiresAt: job.expires_at,
@@ -94,7 +105,8 @@ export async function getJobsServer(): Promise<ReturnType<typeof mapJob>[]> {
           clearance_level, location, status, featured, created_at,
           expires_at, views_count, applications_count,
           companies ( name, logo_url, industry, slug, is_verified, headquarters_location ),
-          job_skills ( skills ( name ) )
+          job_skills ( skills ( name ) ),
+          job_categories ( categories ( name, slug ) )
         `)
         .in('status', ['active', 'open', 'published'])
         .order('created_at', { ascending: false });
@@ -126,7 +138,7 @@ export async function getCompaniesServer() {
     website_url: c.website_url,
     size: c.size_band || '1-10',
     size_band: c.size_band,
-    industry: c.industry || 'Technology',
+    industry: c.industry || '',
     location: c.headquarters_location || '',
     headquarters_location: c.headquarters_location,
     verified: c.is_verified || false,

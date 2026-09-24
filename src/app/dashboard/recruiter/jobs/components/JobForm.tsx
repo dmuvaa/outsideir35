@@ -8,10 +8,16 @@ import 'react-quill-new/dist/quill.snow.css';
 
 const ReactQuill = dynamic(() => import('react-quill-new'), { ssr: false });
 
+interface CategoryOption {
+  id: string;
+  name: string;
+  parent_id?: string | null;
+}
+
 interface JobFormProps {
   mode: 'create' | 'edit';
   initialData?: any;
-  categories?: { id: string; name: string }[];
+  categories?: CategoryOption[];
   skills?: { id: string; name: string; category_id: string }[];
 }
 
@@ -20,12 +26,24 @@ export default function JobForm({ mode, initialData = {}, categories = [], skill
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [descriptionHtml, setDescriptionHtml] = useState(initialData.description_html || '');
-  const [selectedCategory, setSelectedCategory] = useState(initialData.category_id || '');
+  const hasTree = categories.some((category) => category.parent_id);
+  const initialCategory = categories.find((category) => category.id === initialData.category_id);
+  const [parentId, setParentId] = useState(initialCategory?.parent_id || (!hasTree ? initialCategory?.id || '' : ''));
+  const [subcategoryId, setSubcategoryId] = useState(initialCategory?.parent_id ? initialCategory.id : '');
   const [selectedSkills, setSelectedSkills] = useState<string[]>(initialData.skill_ids || []);
+  const parents = categories.filter((category) => !category.parent_id);
+  const subcategories = categories.filter((category) => category.parent_id === parentId);
+  const selectedCategory = hasTree ? subcategoryId : parentId;
 
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedCategory(e.target.value);
-    setSelectedSkills([]); // reset skills when category changes
+  const handleParentChange = (value: string) => {
+    setParentId(value);
+    setSubcategoryId('');
+    setSelectedSkills([]);
+  };
+
+  const handleSubcategoryChange = (value: string) => {
+    setSubcategoryId(value);
+    setSelectedSkills([]);
   };
 
   const handleSkillToggle = (skillId: string) => {
@@ -40,7 +58,7 @@ export default function JobForm({ mode, initialData = {}, categories = [], skill
     setError('');
 
     if (!selectedCategory) {
-      setError('Please select an Industry Category');
+      setError(hasTree ? 'Choose a category and a subcategory' : 'Choose a category');
       setLoading(false);
       return;
     }
@@ -94,12 +112,23 @@ export default function JobForm({ mode, initialData = {}, categories = [], skill
           </div>
         </div>
 
-        <div>
-          <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>Industry Category</label>
-          <select value={selectedCategory} onChange={handleCategoryChange} required className="input-field" style={{ width: '100%' }}>
-            <option value="">Select Category</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+        <div style={{ display: 'grid', gridTemplateColumns: hasTree ? '1fr 1fr' : '1fr', gap: '24px' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>Category</label>
+            <select value={parentId} onChange={(e) => handleParentChange(e.target.value)} required className="input-field" style={{ width: '100%' }}>
+              <option value="">Select category</option>
+              {(hasTree ? parents : categories).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </div>
+          {hasTree && (
+            <div>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600' }}>Subcategory</label>
+              <select value={subcategoryId} onChange={(e) => handleSubcategoryChange(e.target.value)} required={Boolean(parentId)} className="input-field" style={{ width: '100%' }}>
+                <option value="">Select subcategory</option>
+                {subcategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+              </select>
+            </div>
+          )}
         </div>
 
         {selectedCategory && (

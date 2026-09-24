@@ -2,9 +2,11 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { importScrapedPosts, startApifyScrape, ingestApifyRun, ingestApifyDataset, publishScrapedLead, rejectScrapedLead } from '@/app/actions/scrape';
+import { useRouter } from 'next/navigation';
+import { importScrapedPosts, startApifyScrape, ingestApifyRun, ingestApifyDataset, publishScrapedLead, rejectScrapedLead, deleteScrapedLeads } from '@/app/actions/scrape';
 import { formatDayRate } from '@/lib/platform';
 import { extractApplyEmail } from '@/lib/scrape-parse';
+import { suggestSubcategorySlug } from '@/lib/job-taxonomy';
 
 type Lead = {
   id: string;
@@ -29,16 +31,30 @@ type Lead = {
   confidence: number;
   status: string;
   published_job_id: string | null;
+  created_at: string | null;
 };
 
 const FILTERS = ['pending', 'with_email', 'publishable', 'needs_review', 'reject', 'published', 'rejected'] as const;
 
-export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[]; apifyConfigured: boolean }) {
+type CategoryOption = { id: string; name: string; slug: string; parent_id: string | null };
+
+function importMessage(res: { posts?: number; imported?: number; stored?: number; failed?: number }) {
+  const total = res.posts ?? res.imported ?? 0;
+  const imported = res.imported ?? total;
+  const stored = res.stored ?? imported;
+  if (res.failed) return `Imported ${imported} of ${total} posts.`;
+  if (stored < imported) return `Imported ${imported} posts. ${stored} were new.`;
+  return `Imported ${imported} posts.`;
+}
+
+export default function ScrapeInbox({ leads, categories = [], apifyConfigured }: { leads: Lead[]; categories?: CategoryOption[]; apifyConfigured: boolean }) {
+  const router = useRouter();
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('pending');
   const [json, setJson] = useState('');
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [runId, setRunId] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
 
   const visible = leads.filter((lead) => {
     if (filter === 'pending') return lead.status === 'pending';
@@ -56,6 +72,30 @@ export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[];
     reject: leads.filter((l) => l.status === 'pending' && l.classification === 'reject').length,
     published: leads.filter((l) => l.status === 'published').length,
     rejected: leads.filter((l) => l.status === 'rejected').length,
+  };
+
+  const ordered = [...visible].sort((a, b) => {
+    const day = postedTime(b) - postedTime(a);
+    if (day) return day;
+    return Number(Boolean(leadEmail(b))) - Number(Boolean(leadEmail(a)));
+  });
+  const selectedInView = ordered.filter((lead) => selected.includes(lead.id)).map((lead) => lead.id);
+
+  const removePosts = async (ids: string[]) => {
+    if (!ids.length) return;
+    const label = ids.length === 1 ? 'Remove this post from the inbox?' : `Remove ${ids.length} posts from the inbox?`;
+    if (!window.confirm(label)) return;
+    setBusy(true);
+    const res = await deleteScrapedLeads(ids);
+    setBusy(false);
+    if ('error' in res && res.error) {
+      setMessage(res.error);
+      return;
+    }
+    const removed = 'removed' in res ? res.removed : ids.length;
+    setSelected((current) => current.filter((id) => !ids.includes(id)));
+    setMessage(`Removed ${removed} ${removed === 1 ? 'post' : 'posts'}.`);
+    router.refresh();
   };
 
   return (
@@ -77,7 +117,9 @@ export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[];
             if ('error' in res && res.error) {
               setMessage(res.error);
             } else if ('imported' in res) {
-              setMessage(`Parsed ${res.imported} roles (${res.stored} new). Publishable: ${res.counts?.publishable || 0}, review: ${res.counts?.needs_review || 0}, reject: ${res.counts?.reject || 0}.`);
+              setFilter('pending');
+              setMessage(importMessage(res));
+              router.refresh();
             }
           }}
         >
@@ -142,7 +184,11 @@ export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[];
             if (existingRun) setRunId(existingRun);
             if ('error' in res && res.error) setMessage(res.error);
             else if ('pending' in res && res.pending) setMessage(`Still ${res.status}`);
-            else if ('imported' in res) setMessage(`Loaded ${res.imported} roles from that run.`);
+            else if ('imported' in res) {
+              setFilter('pending');
+              setMessage(importMessage(res));
+              router.refresh();
+            }
           }}
           style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'end' }}
         >
@@ -172,24 +218,84 @@ export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[];
         ))}
       </div>
 
+      {visible.length > 0 && (
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: '13px' }}>
+            <input
+              type="checkbox"
+              checked={visible.every((lead) => selected.includes(lead.id))}
+              onChange={(e) => {
+                const ids = visible.map((lead) => lead.id);
+                setSelected(e.target.checked
+                  ? [...new Set([...selected, ...ids])]
+                  : selected.filter((id) => !ids.includes(id)));
+              }}
+            />
+            Select all in this view
+          </label>
+          <button
+            className="btn btn-secondary btn-sm"
+            type="button"
+            disabled={busy || selectedInView.length === 0}
+            onClick={() => removePosts(selectedInView)}
+          >
+            Remove selected ({selectedInView.length})
+          </button>
+        </div>
+      )}
+
       {visible.length === 0 ? (
         <div className="glass-panel" style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
           No leads in this view.
         </div>
       ) : (
-        [...visible]
-          .sort((a, b) => Number(Boolean(leadEmail(b))) - Number(Boolean(leadEmail(a))))
-          .map((lead) => <LeadCard key={lead.id} lead={lead} onMessage={setMessage} />)
+        ordered.map((lead) => (
+          <LeadCard
+            key={lead.id}
+            lead={lead}
+            categories={categories}
+            selected={selected.includes(lead.id)}
+            onToggle={() => setSelected((current) => current.includes(lead.id) ? current.filter((id) => id !== lead.id) : [...current, lead.id])}
+            onRemove={() => removePosts([lead.id])}
+            onMessage={setMessage}
+          />
+        ))
       )}
     </div>
   );
+}
+
+function postedTime(lead: Lead) {
+  const time = lead.created_at ? Date.parse(lead.created_at) : NaN;
+  return Number.isFinite(time) ? time : 0;
+}
+
+function formatPosted(value: string | null) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `Posted ${date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}`;
 }
 
 function leadEmail(lead: Lead) {
   return lead.apply_email || lead.contact_email || extractApplyEmail(`${lead.description_html || ''}\n${lead.apply_url || ''}`);
 }
 
-function LeadCard({ lead, onMessage }: { lead: Lead; onMessage: (value: string) => void }) {
+function LeadCard({
+  lead,
+  categories,
+  selected,
+  onToggle,
+  onRemove,
+  onMessage,
+}: {
+  lead: Lead;
+  categories: CategoryOption[];
+  selected: boolean;
+  onToggle: () => void;
+  onRemove: () => void;
+  onMessage: (value: string) => void;
+}) {
   const [busy, setBusy] = useState(false);
   const foundEmail = lead.apply_email || extractApplyEmail(`${lead.description_html || ''}\n${lead.apply_url || ''}`);
   const tone = lead.classification === 'publishable'
@@ -220,14 +326,18 @@ function LeadCard({ lead, onMessage }: { lead: Lead; onMessage: (value: string) 
       }}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: '12px', color: tone, fontWeight: 700, textTransform: 'uppercase' }}>
-            {lead.classification.replace('_', ' ')} · {lead.confidence}%
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+          <input type="checkbox" checked={selected} onChange={onToggle} aria-label={`Select ${lead.title}`} style={{ marginTop: '4px' }} />
+          <div>
+            <div style={{ fontSize: '12px', color: tone, fontWeight: 700, textTransform: 'uppercase' }}>
+              {lead.classification.replace('_', ' ')} · {lead.confidence}%
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{lead.classification_reason}</div>
           </div>
-          <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{lead.classification_reason}</div>
         </div>
-        <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-          {formatDayRate(lead.day_rate_min, lead.day_rate_max)} / day
+        <div style={{ fontSize: '13px', color: 'var(--text-secondary)', textAlign: 'right' }}>
+          <div>{formatPosted(lead.created_at)}</div>
+          <div>{formatDayRate(lead.day_rate_min, lead.day_rate_max)} / day</div>
         </div>
       </div>
 
@@ -248,6 +358,7 @@ function LeadCard({ lead, onMessage }: { lead: Lead; onMessage: (value: string) 
         <Field name="contract_length" label="Length" defaultValue={lead.contract_length || ''} />
         <Field name="apply_url" label="Apply URL" defaultValue={lead.apply_url || ''} />
         <Field name="contact_email" label="Client email" defaultValue={lead.contact_email || foundEmail} type="email" />
+        <CategoryFields categories={categories} title={lead.title} description={lead.description_html} />
         <input type="hidden" name="ir35_status" value="outside" />
         <input type="hidden" name="clearance_level" value={lead.clearance_level} />
       </div>
@@ -291,11 +402,45 @@ function LeadCard({ lead, onMessage }: { lead: Lead; onMessage: (value: string) 
             Open LinkedIn
           </a>
         )}
+        <button className="btn btn-secondary btn-sm" type="button" onClick={onRemove} disabled={busy}>
+          Remove
+        </button>
         <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
           {lead.recruiter_name} · {lead.ir35_status} · {lead.status}
         </span>
       </div>
     </form>
+  );
+}
+
+function CategoryFields({ categories, title, description }: { categories: CategoryOption[]; title: string; description: string }) {
+  const hasTree = categories.some((category) => category.parent_id);
+  const suggestion = categories.find((category) => category.slug === suggestSubcategorySlug(`${title}\n${description}`));
+  const [parentId, setParentId] = useState(suggestion?.parent_id || (!hasTree ? suggestion?.id || '' : ''));
+  const [subcategoryId, setSubcategoryId] = useState(suggestion?.parent_id ? suggestion.id : '');
+  const parents = categories.filter((category) => !category.parent_id);
+  const children = categories.filter((category) => category.parent_id === parentId);
+
+  return (
+    <>
+      <label style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+        Category
+        <select value={parentId} onChange={(e) => { setParentId(e.target.value); setSubcategoryId(''); }} className="input-field" style={{ display: 'block', marginTop: '4px', width: '100%' }}>
+          <option value="">Select category</option>
+          {(hasTree ? parents : categories).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+        </select>
+      </label>
+      {hasTree && (
+        <label style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+          Subcategory
+          <select value={subcategoryId} onChange={(e) => setSubcategoryId(e.target.value)} className="input-field" style={{ display: 'block', marginTop: '4px', width: '100%' }}>
+            <option value="">Select subcategory</option>
+            {children.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+          </select>
+        </label>
+      )}
+      <input type="hidden" name="category_id" value={hasTree ? subcategoryId : parentId} />
+    </>
   );
 }
 

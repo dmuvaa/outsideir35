@@ -40,7 +40,7 @@ The app needs a Node.js host (Vercel, or `npm run build` then `npm run start`). 
 
 Sign-in is email and password. A normal login does not send email. In Supabase, open Authentication → Sign In / Providers → Email and turn off **Confirm email**, so creating an account does not send mail either. Password reset still uses Supabase email, which is rate-limited on the built-in sender.
 
-Apply the SQL files in `supabase/migrations/` in filename order, including `20260924153000_otp_auth.sql`.
+Apply the SQL files in `supabase/migrations/` in filename order, including `20260924153000_otp_auth.sql` and `20260925001000_job_category_tree.sql`.
 
 In the Supabase dashboard, set Auth → URL configuration:
 

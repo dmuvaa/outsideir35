@@ -13,7 +13,9 @@ export type LinkedInPost = {
   linkedinUrl?: string;
   content?: string;
   author?: LinkedInAuthor;
-  article?: { title?: string | null; link?: string | null; subtitle?: string | null };
+  article?: { title?: string | null; link?: string | null; subtitle?: string | null; description?: string | null };
+  postImages?: { url?: string | null }[] | null;
+  text?: string | null;
   job?: { title?: string | null; linkedinUrl?: string | null; location?: string | null; subtitle?: string | null };
   postedAt?: { date?: string | null };
   repost?: LinkedInPost | null;
@@ -90,7 +92,10 @@ export function parseApifyItems(items: unknown[]): ParsedLead[] {
 }
 
 export function collectPosts(input: unknown): LinkedInPost[] {
-  return payloadItems(input).filter(isPost);
+  return payloadItems(input).flatMap((item) => {
+    const post = asPost(item);
+    return post ? [post] : [];
+  });
 }
 
 function payloadItems(input: unknown): unknown[] {
@@ -202,10 +207,26 @@ export function parseLinkedInPost(post: LinkedInPost): ParsedLead[] {
   ];
 }
 
+function asPost(item: unknown): LinkedInPost | null {
+  if (!isPost(item)) return null;
+  const content = (item.content || item.text || '').trim();
+  if (content && content !== item.content) return { ...item, content };
+  return item;
+}
+
 function isPost(item: unknown): item is LinkedInPost {
   if (!item || typeof item !== 'object') return false;
   const value = item as LinkedInPost;
-  return Boolean(value.content || value.article || value.job || value.repost);
+  const content = (value.content || value.text || '').trim();
+  return Boolean(
+    value.author ||
+    value.linkedinUrl ||
+    content ||
+    value.article ||
+    value.job ||
+    value.repost ||
+    (Array.isArray(value.postImages) && value.postImages.length)
+  );
 }
 
 function unwrapPost(post: LinkedInPost): LinkedInPost {
@@ -228,7 +249,7 @@ function unwrapPost(post: LinkedInPost): LinkedInPost {
 }
 
 function combinedText(post: LinkedInPost): string {
-  return [post.content, post.article?.title, post.job?.title, post.job?.location]
+  return [post.content, post.article?.title, post.article?.description, post.job?.title, post.job?.location]
     .filter(Boolean)
     .join('\n')
     .replace(/\r/g, '')
@@ -591,7 +612,7 @@ function fingerprint(lead: ParsedLead): string {
 function dedupeLeads(leads: ParsedLead[]): ParsedLead[] {
   const seen = new Set<string>();
   return leads.filter((lead) => {
-    const key = fingerprint(lead);
+    const key = lead.sourcePostId || fingerprint(lead);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

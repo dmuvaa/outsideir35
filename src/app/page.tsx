@@ -17,7 +17,8 @@ export default async function Home() {
 
   const industryCounts: Record<string, number> = {};
   for (const job of allJobs) {
-    const key = job.industry || 'Technology';
+    const key = job.industry;
+    if (!key) continue;
     industryCounts[key] = (industryCounts[key] || 0) + 1;
   }
 

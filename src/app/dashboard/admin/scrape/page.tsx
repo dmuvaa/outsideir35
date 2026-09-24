@@ -18,6 +18,11 @@ export default async function AdminScrapePage() {
     .order('created_at', { ascending: false })
     .limit(1000);
 
+  const categoryQuery = await supabase.from('categories').select('id, name, slug, parent_id').order('name');
+  const categories = categoryQuery.error
+    ? ((await supabase.from('categories').select('id, name, slug').order('name')).data || []).map((category) => ({ ...category, parent_id: null }))
+    : categoryQuery.data || [];
+
   return (
     <div className="fade-in">
       <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>LinkedIn scrape</h1>
@@ -31,7 +36,7 @@ export default async function AdminScrapePage() {
           Inbox table is missing. Apply <code>supabase/migrations/20260922120000_scraped_jobs_inbox.sql</code>.
         </p>
       )}
-      <ScrapeInbox leads={leads || []} apifyConfigured={Boolean(process.env.APIFY_TOKEN)} />
+      <ScrapeInbox leads={leads || []} categories={categories} apifyConfigured={Boolean(process.env.APIFY_TOKEN)} />
     </div>
   );
 }

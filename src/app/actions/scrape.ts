@@ -8,6 +8,7 @@ import { collectPosts, parseApifyItems, type LinkedInPost, type ParsedLead } fro
 import { slugify, uniqueSlug } from '@/lib/platform';
 
 const DEFAULT_ACTOR = process.env.APIFY_ACTOR_ID || 'harvestapi/linkedin-post-search';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function verifyAdmin() {
   const supabase = createClient(await cookies());
@@ -45,26 +46,37 @@ async function fetchDatasetPosts(datasetId: string, token: string) {
   return { posts };
 }
 
+function clip(value: string | null | undefined, max: number) {
+  const text = (value || '').trim();
+  return text ? text.slice(0, max) : null;
+}
+
+function postedAtOrNull(value: string | null) {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
+}
+
 function leadRow(lead: ParsedLead, raw: unknown) {
   return {
-    source_post_id: lead.sourcePostId,
-    source_url: lead.sourceUrl,
+    source_post_id: lead.sourcePostId.slice(0, 255),
+    source_url: clip(lead.sourceUrl, 500),
     raw,
-    title: lead.title.slice(0, 255),
-    description_html: lead.descriptionHtml,
-    company_name: lead.companyName,
-    recruiter_name: lead.recruiterName,
-    location: lead.location,
+    title: (lead.title || 'LinkedIn post').slice(0, 255),
+    description_html: lead.descriptionHtml || '<p>LinkedIn post</p>',
+    company_name: clip(lead.companyName, 255),
+    recruiter_name: clip(lead.recruiterName, 255),
+    location: clip(lead.location, 255),
     remote_type: lead.remoteType,
     day_rate_min: lead.dayRateMin,
     day_rate_max: lead.dayRateMax,
-    rate_note: lead.rateNote,
+    rate_note: clip(lead.rateNote, 255),
     ir35_status: lead.ir35Status,
     clearance_level: lead.clearanceLevel,
-    contract_length: lead.contractLength,
-    apply_url: lead.applyUrl,
-    apply_email: lead.applyEmail || null,
-    posted_at: lead.postedAt,
+    contract_length: clip(lead.contractLength, 100),
+    apply_url: clip(lead.applyUrl, 500),
+    apply_email: clip(lead.applyEmail, 255),
+    posted_at: postedAtOrNull(lead.postedAt),
     classification: lead.classification,
     classification_reason: lead.reasons.join(' · '),
     confidence: lead.confidence,
@@ -77,11 +89,14 @@ async function upsertLeads(supabase: ReturnType<typeof createClient>, posts: Lin
   const leads = parseApifyItems(posts);
   const rawById = new Map<string, LinkedInPost>();
   for (const post of posts) {
-    if (post.id) rawById.set(String(post.id), post);
+    const key = String(post.id || post.linkedinUrl || '');
+    if (key) rawById.set(key, post);
   }
 
   const counts = { publishable: 0, needs_review: 0, reject: 0 };
   let stored = 0;
+  const outcome = new Map<string, 'new' | 'existing' | 'failed'>();
+  let firstError = '';
 
   for (const lead of leads) {
     counts[lead.classification] += 1;
@@ -100,11 +115,29 @@ async function upsertLeads(supabase: ReturnType<typeof createClient>, posts: Lin
       error = retry.error;
       data = retry.data;
     }
-    if (error) throw new Error(error.message);
-    if (data?.length) stored += 1;
+    if (error) {
+      firstError = firstError || error.message;
+      if (outcome.get(parentId) !== 'new' && outcome.get(parentId) !== 'existing') outcome.set(parentId, 'failed');
+      continue;
+    }
+    if (data?.length) {
+      stored += 1;
+      outcome.set(parentId, 'new');
+    } else if (outcome.get(parentId) !== 'new') {
+      outcome.set(parentId, 'existing');
+    }
   }
 
-  return { imported: leads.length, stored, counts };
+  for (const post of posts) {
+    const key = String(post.id || post.linkedinUrl || '');
+    if (key && !outcome.has(key)) outcome.set(key, 'failed');
+  }
+
+  const failed = [...outcome.values()].filter((value) => value === 'failed').length;
+  const imported = posts.length - failed;
+  if (imported === 0) throw new Error(firstError || 'No posts could be saved.');
+
+  return { posts: posts.length, imported, stored, failed, counts };
 }
 
 export async function importScrapedPosts(raw: string) {
@@ -213,6 +246,20 @@ export async function ingestApifyRun(runId: string) {
   }
 }
 
+export async function deleteScrapedLeads(leadIds: string[]) {
+  try {
+    const { supabase } = await verifyAdmin();
+    const ids = [...new Set(leadIds.filter((id) => UUID_PATTERN.test(id)))];
+    if (!ids.length) return { error: 'Choose at least one post to remove.' };
+    const { error, count } = await supabase.from('scraped_jobs').delete({ count: 'exact' }).in('id', ids);
+    if (error) return { error: error.message };
+    revalidatePath('/dashboard/admin/scrape');
+    return { success: true, removed: count ?? ids.length };
+  } catch (error: any) {
+    return { error: error.message || 'Could not remove posts' };
+  }
+}
+
 export async function rejectScrapedLead(leadId: string, contactEmail: string) {
   try {
     const { supabase, user } = await verifyAdmin();
@@ -251,6 +298,8 @@ export async function publishScrapedLead(leadId: string, formData: FormData) {
     const ir35 = String(formData.get('ir35_status') || lead.ir35_status || 'outside');
     if (!title) throw new Error('Title is required');
     if (ir35 !== 'outside') throw new Error('Only Outside IR35 leads can be published to the candidate board');
+    const categoryId = String(formData.get('category_id') || '').trim();
+    if (!categoryId) return { error: 'Choose a category and subcategory before publishing.' };
 
     const min = Number(formData.get('day_rate_min') || lead.day_rate_min || 0) || null;
     const max = Number(formData.get('day_rate_max') || lead.day_rate_max || min || 0) || null;
@@ -300,6 +349,11 @@ export async function publishScrapedLead(leadId: string, formData: FormData) {
       }).select('id, slug').single();
       if (retry.error) throw new Error(retry.error.message);
       job = retry.data;
+    }
+
+    const linked = await supabase.from('job_categories').insert({ job_id: job!.id, category_id: categoryId });
+    if (linked.error && linked.error.code !== '23505') {
+      return { error: 'The role is on the board, but the category was not saved. Edit it and choose the subcategory again.' };
     }
 
     const reviewed = {

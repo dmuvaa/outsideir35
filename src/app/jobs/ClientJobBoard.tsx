@@ -4,7 +4,19 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { companyHref, formatDayRate, isSourcedJob, parseJobSearchParams } from '@/lib/platform';
+import { parentSlugFor } from '@/lib/job-taxonomy';
 import { getProxyImageUrl } from '@/lib/image-utils';
+
+function skillInSelectedCategory(
+  skill: { category_id?: string },
+  selected: string[],
+  categories: { id: string; parent_id?: string | null }[]
+) {
+  if (!skill.category_id) return false;
+  if (selected.includes(skill.category_id)) return true;
+  const child = categories.find((category) => category.id === skill.category_id);
+  return Boolean(child?.parent_id && selected.includes(child.parent_id));
+}
 
 export default function ClientJobBoard({ initialJobs, applications, categories = [], skills = [] }: { initialJobs: any[], applications: string[], categories?: any[], skills?: any[] }) {
   const searchParams = useSearchParams();
@@ -78,7 +90,13 @@ export default function ClientJobBoard({ initialJobs, applications, categories =
     if (selectedIndustries.length > 0) {
       result = result.filter(j => {
         const catArray = j.job_categories || [];
-        return catArray.some((jc: any) => selectedIndustries.includes(jc.categories?.id));
+        return catArray.some((jc: any) => {
+          const category = jc.categories;
+          if (!category) return false;
+          if (selectedIndustries.includes(category.id)) return true;
+          const group = parentSlugFor(category.slug);
+          return categories.some((item) => selectedIndustries.includes(item.id) && item.slug === group);
+        });
       });
     }
 
@@ -162,7 +180,7 @@ export default function ClientJobBoard({ initialJobs, applications, categories =
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px' }}>Industry</label>
             <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {categories.map(c => (
+            {categories.filter((category) => !categories.some((item) => item.parent_id) || !category.parent_id).map(c => (
               <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
                 <input type="checkbox" checked={selectedIndustries.includes(c.id)} onChange={() => toggleFilter(selectedIndustries, setSelectedIndustries, c.id)} /> {c.name}
               </label>
@@ -174,12 +192,12 @@ export default function ClientJobBoard({ initialJobs, applications, categories =
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', fontSize: '13px' }}>Tags (Skills/Roles)</label>
               <div style={{ maxHeight: '150px', overflowY: 'auto', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-              {skills.filter(s => selectedIndustries.includes(s.category_id)).map(s => (
+              {skills.filter(s => skillInSelectedCategory(s, selectedIndustries, categories)).map(s => (
                  <label key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '11px', background: selectedTags.includes(s.id) ? 'var(--color-outside-glow)' : 'transparent', color: selectedTags.includes(s.id) ? 'var(--color-outside)' : 'var(--text-secondary)', padding: '4px 8px', borderRadius: '12px', cursor: 'pointer', border: '1px solid', borderColor: selectedTags.includes(s.id) ? 'var(--color-outside)' : 'var(--border-color)', transition: 'all 0.2s' }}>
                    <input type="checkbox" style={{ display: 'none' }} checked={selectedTags.includes(s.id)} onChange={() => toggleFilter(selectedTags, setSelectedTags, s.id)} /> {s.name}
                  </label>
               ))}
-              {skills.filter(s => selectedIndustries.includes(s.category_id)).length === 0 && (
+              {skills.filter(s => skillInSelectedCategory(s, selectedIndustries, categories)).length === 0 && (
                 <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>No tags available for selected industries.</span>
               )}
               </div>

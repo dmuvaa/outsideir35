@@ -22,7 +22,10 @@ export default async function RecruiterSettingsPage() {
     company = comp;
   }
 
-  const { data: categories } = await supabase.from('categories').select('id, name').order('name');
+  const categoryQuery = await supabase.from('categories').select('id, name, parent_id').order('name');
+  const categories = categoryQuery.error
+    ? (await supabase.from('categories').select('id, name').order('name')).data || []
+    : (categoryQuery.data || []).filter((category) => !category.parent_id);
 
   return (
     <div className="fade-in">

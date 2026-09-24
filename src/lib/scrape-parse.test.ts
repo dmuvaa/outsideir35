@@ -165,7 +165,34 @@ test('wrapped and single-post JSON still count as posts', () => {
   assert.equal(collectPosts(`${JSON.stringify(post)}\n${JSON.stringify({ ...post, id: '12' })}`).length, 2);
 });
 
-test('import dedupes the same role from a post and its repost', () => {
+test('every extracted post is kept, including image posts and repeated titles', () => {
+  const image = {
+    id: 'img-1',
+    content: '',
+    postImages: [{ url: 'https://example.com/role.jpg' }],
+    author: { name: 'Recruiter' },
+    linkedinUrl: 'https://www.linkedin.com/posts/image-role',
+  };
+  const first = {
+    id: 'a',
+    content: 'Java Developer\nOutside IR35\n£500 per day\nLondon',
+    author: { name: 'Ada' },
+    linkedinUrl: 'https://www.linkedin.com/posts/ada-a',
+  };
+  const second = {
+    id: 'b',
+    content: 'Java Developer\nOutside IR35\n£500 per day\nLondon',
+    author: { name: 'Ada' },
+    linkedinUrl: 'https://www.linkedin.com/posts/ada-b',
+  };
+  const posts = collectPosts([image, first, second]);
+  assert.equal(posts.length, 3);
+  const leads = parseApifyItems(posts);
+  assert.equal(leads.length, 3);
+  assert.deepEqual(leads.map((lead) => lead.sourcePostId).sort(), ['a', 'b', 'img-1']);
+});
+
+test('a repost is imported as its own post', () => {
   const original: LinkedInPost = {
     id: '9',
     content: 'UX/UI Designer\nBristol/Midlands\n3-week engagement\nDay rate DOE\nOutside IR35',
@@ -181,7 +208,6 @@ test('import dedupes the same role from a post and its repost', () => {
   };
 
   const leads = parseApifyItems([original, share]);
-  assert.equal(leads.length, 1);
-  assert.equal(leads[0].title, 'UX/UI Designer');
-  assert.equal(leads[0].classification, 'needs_review');
+  assert.equal(leads.length, 2);
+  assert.ok(leads.every((lead) => lead.classification === 'needs_review'));
 });
