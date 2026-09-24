@@ -251,9 +251,19 @@ export async function deleteScrapedLeads(leadIds: string[]) {
     const { supabase } = await verifyAdmin();
     const ids = [...new Set(leadIds.filter((id) => UUID_PATTERN.test(id)))];
     if (!ids.length) return { error: 'Choose at least one post to remove.' };
+    const { data: rows, error: readError } = await supabase.from('scraped_jobs').select('published_job_id').in('id', ids);
+    if (readError) return { error: readError.message };
+    const jobIds = [...new Set((rows || []).map((row) => row.published_job_id).filter((id): id is string => Boolean(id)))];
+    if (jobIds.length) {
+      const removedJobs = await supabase.from('jobs').delete().in('id', jobIds);
+      if (removedJobs.error) return { error: removedJobs.error.message };
+    }
     const { error, count } = await supabase.from('scraped_jobs').delete({ count: 'exact' }).in('id', ids);
     if (error) return { error: error.message };
     revalidatePath('/dashboard/admin/scrape');
+    revalidatePath('/dashboard/admin/roles');
+    revalidatePath('/jobs');
+    revalidatePath('/');
     return { success: true, removed: count ?? ids.length };
   } catch (error: any) {
     return { error: error.message || 'Could not remove posts' };

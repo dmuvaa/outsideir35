@@ -19,9 +19,10 @@ interface JobFormProps {
   initialData?: any;
   categories?: CategoryOption[];
   skills?: { id: string; name: string; category_id: string }[];
+  returnTo?: string;
 }
 
-export default function JobForm({ mode, initialData = {}, categories = [], skills = [] }: JobFormProps) {
+export default function JobForm({ mode, initialData = {}, categories = [], skills = [], returnTo = '/dashboard/recruiter/jobs' }: JobFormProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -85,7 +86,8 @@ export default function JobForm({ mode, initialData = {}, categories = [], skill
       if (res.error) {
         setError(res.error);
       } else {
-        router.push('/dashboard/recruiter/jobs');
+        router.push(returnTo);
+        router.refresh();
       }
     } catch (err: any) {
       console.error('Server action error:', err);

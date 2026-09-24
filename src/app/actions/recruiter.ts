@@ -3,6 +3,7 @@
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
+import { getDbRole } from '@/lib/auth-role';
 import {
   isAllowedApplicationStatus,
   jobEvidencePayload,
@@ -95,11 +96,18 @@ export async function createJob(formData: FormData) {
 
 export async function updateJob(jobId: string, formData: FormData) {
   try {
-    const { supabase, user, companyId } = await verifyRecruiter();
-    const { data: job } = await supabase.from('jobs').select('company_id, slug').eq('id', jobId).single();
-    if (!job || job.company_id !== companyId) throw new Error('Unauthorized to edit this job');
+    const supabase = createClient(await cookies());
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Unauthorized');
+    const role = await getDbRole(supabase, user);
+    const { data: job } = await supabase.from('jobs').select('company_id, recruiter_id, slug').eq('id', jobId).single();
+    if (!job) throw new Error('Job not found');
+    if (role !== 'admin') {
+      const { data: profile } = await supabase.from('recruiter_profiles').select('company_id').eq('user_id', user.id).single();
+      if (!profile?.company_id || job.company_id !== profile.company_id) throw new Error('Unauthorized to edit this job');
+    }
 
-    const { row } = coreJobFields(formData, user.id, companyId, job.slug);
+    const { row } = coreJobFields(formData, job.recruiter_id || user.id, job.company_id, job.slug);
     const { slug, company_id, recruiter_id, ...updateRow } = row;
     const evidence = jobEvidencePayload(formData);
 
@@ -132,7 +140,9 @@ export async function updateJob(jobId: string, formData: FormData) {
     }
 
     revalidatePath('/dashboard/recruiter/jobs');
+    revalidatePath('/dashboard/admin/roles');
     revalidatePath('/jobs');
+    revalidatePath('/');
     return { success: true };
   } catch (error: any) {
     return { error: error.message };
@@ -141,15 +151,26 @@ export async function updateJob(jobId: string, formData: FormData) {
 
 export async function deleteJob(jobId: string) {
   try {
-    const { supabase, companyId } = await verifyRecruiter();
+    const supabase = createClient(await cookies());
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Unauthorized');
+    const role = await getDbRole(supabase, user);
     const { data: job } = await supabase.from('jobs').select('company_id').eq('id', jobId).single();
-    if (job?.company_id !== companyId) throw new Error('Unauthorized to delete this job');
+    if (!job) throw new Error('Job not found');
+    if (role !== 'admin') {
+      const { data: profile } = await supabase.from('recruiter_profiles').select('company_id').eq('user_id', user.id).single();
+      if (!profile?.company_id || job.company_id !== profile.company_id) throw new Error('Unauthorized to delete this job');
+    }
 
+    await supabase.from('scraped_jobs').update({ status: 'rejected', published_job_id: null }).eq('published_job_id', jobId);
     const { error } = await supabase.from('jobs').delete().eq('id', jobId);
     if (error) throw new Error(error.message);
 
     revalidatePath('/dashboard/recruiter/jobs');
+    revalidatePath('/dashboard/admin/roles');
+    revalidatePath('/dashboard/admin/scrape');
     revalidatePath('/jobs');
+    revalidatePath('/');
     return { success: true };
   } catch (error: any) {
     return { error: error.message };

@@ -14,6 +14,25 @@ async function verifyAdmin() {
   return { supabase, user };
 }
 
+export async function deleteJobsAsAdmin(jobIds: string[]) {
+  try {
+    const { supabase } = await verifyAdmin();
+    const ids = [...new Set(jobIds.filter((id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))];
+    if (!ids.length) return { error: 'Choose at least one role to remove.' };
+    await supabase.from('scraped_jobs').update({ status: 'rejected', published_job_id: null }).in('published_job_id', ids);
+    const { error, count } = await supabase.from('jobs').delete({ count: 'exact' }).in('id', ids);
+    if (error) return { error: error.message };
+    revalidatePath('/dashboard/admin');
+    revalidatePath('/dashboard/admin/roles');
+    revalidatePath('/dashboard/admin/scrape');
+    revalidatePath('/jobs');
+    revalidatePath('/');
+    return { success: true, removed: count ?? ids.length };
+  } catch (error: any) {
+    return { error: error.message || 'Could not remove roles' };
+  }
+}
+
 export async function archiveJobAsAdmin(jobId: string) {
   try {
     const { supabase } = await verifyAdmin();
@@ -23,7 +42,9 @@ export async function archiveJobAsAdmin(jobId: string) {
     }).eq('id', jobId);
     if (error) throw new Error(error.message);
     revalidatePath('/dashboard/admin');
+    revalidatePath('/dashboard/admin/roles');
     revalidatePath('/jobs');
+    revalidatePath('/');
     return { success: true };
   } catch (error: any) {
     return { error: error.message };

@@ -22,7 +22,8 @@ export default async function AdminDashboard() {
       <h1 style={{ fontSize: '28px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>Admin</h1>
       <p style={{ color: 'var(--text-secondary)', marginBottom: '16px' }}>Moderation and listing health. No billing tools yet.</p>
       <p style={{ marginBottom: '32px' }}>
-        <Link href="/dashboard/admin/scrape" className="btn btn-primary btn-sm">LinkedIn scrape inbox</Link>
+        <Link href="/dashboard/admin/roles" className="btn btn-primary btn-sm">Manage roles</Link>
+        <Link href="/dashboard/admin/scrape" className="btn btn-secondary btn-sm" style={{ marginLeft: '8px' }}>LinkedIn scrape inbox</Link>
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '16px', marginBottom: '32px' }}>

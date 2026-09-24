@@ -83,7 +83,9 @@ export default function ScrapeInbox({ leads, categories = [], apifyConfigured }:
 
   const removePosts = async (ids: string[]) => {
     if (!ids.length) return;
-    const label = ids.length === 1 ? 'Remove this post from the inbox?' : `Remove ${ids.length} posts from the inbox?`;
+    const label = ids.length === 1
+      ? 'Remove this post? If it is on the candidate board, that role is removed too.'
+      : `Remove ${ids.length} posts? Any of them already on the candidate board are removed too.`;
     if (!window.confirm(label)) return;
     setBusy(true);
     const res = await deleteScrapedLeads(ids);

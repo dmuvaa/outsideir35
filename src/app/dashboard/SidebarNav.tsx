@@ -82,9 +82,14 @@ export default function SidebarNav({ role, isRecruiter, isCandidate, isAdmin }: 
           )}
 
           {isAdmin && (
-            <Link href="/dashboard/admin/scrape" style={getLinkStyle('/dashboard/admin/scrape')}>
-              LinkedIn scrape
-            </Link>
+            <>
+              <Link href="/dashboard/admin/roles" style={getLinkStyle('/dashboard/admin/roles')}>
+                Roles
+              </Link>
+              <Link href="/dashboard/admin/scrape" style={getLinkStyle('/dashboard/admin/scrape')}>
+                LinkedIn scrape
+              </Link>
+            </>
           )}
 
           <Link href={`/dashboard/${role}/settings`} style={getLinkStyle(`/dashboard/${role}/settings`)}>
