@@ -16,7 +16,7 @@ export default async function AdminScrapePage() {
     .from('scraped_jobs')
     .select('*')
     .order('created_at', { ascending: false })
-    .limit(100);
+    .limit(1000);
 
   return (
     <div className="fade-in">

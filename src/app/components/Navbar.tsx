@@ -41,15 +41,7 @@ export default function Navbar({ user }: NavbarProps) {
     <header className="site-header">
       <div className="container header-container" style={{ position: 'relative' }}>
         <Link href="/" className="logo-wrapper">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: 'url(#violetGlow)' }}>
-            <defs>
-              <linearGradient id="violetGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#c084fc" />
-                <stop offset="100%" stopColor="#7c3aed" />
-              </linearGradient>
-            </defs>
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
-          </svg>
+          <img src="/outsideir35-icon.svg" alt="" width="28" height="28" />
           OutsideIR35
         </Link>
 

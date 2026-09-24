@@ -4,7 +4,7 @@ import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 import { getDbRole } from '@/lib/auth-role';
-import { parseApifyItems, type LinkedInPost, type ParsedLead } from '@/lib/scrape-parse';
+import { collectPosts, parseApifyItems, type LinkedInPost, type ParsedLead } from '@/lib/scrape-parse';
 import { slugify, uniqueSlug } from '@/lib/platform';
 
 const DEFAULT_ACTOR = process.env.APIFY_ACTOR_ID || 'harvestapi/linkedin-post-search';
@@ -16,6 +16,33 @@ async function verifyAdmin() {
   const role = await getDbRole(supabase, user);
   if (role !== 'admin') throw new Error('Admin access required');
   return { supabase, user };
+}
+
+function requestedMaxPosts(value: FormDataEntryValue | null) {
+  const raw = String(value ?? '').trim();
+  if (!raw || raw === '0') return 0;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.floor(parsed);
+}
+
+async function fetchDatasetPosts(datasetId: string, token: string) {
+  const posts: LinkedInPost[] = [];
+  const pageSize = 1000;
+  for (let offset = 0; offset < 20000; offset += pageSize) {
+    const url = `https://api.apify.com/v2/datasets/${datasetId}/items?format=json&offset=${offset}&limit=${pageSize}&token=${token}`;
+    const response = await fetch(url);
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      return { error: body?.error?.message || 'Could not read Apify dataset' };
+    }
+    const page = collectPosts(body);
+    posts.push(...page);
+    const rawCount = Array.isArray(body) ? body.length : page.length;
+    if (rawCount < pageSize) break;
+  }
+  if (posts.length === 0) return { error: 'No LinkedIn posts were found in that dataset.' };
+  return { posts };
 }
 
 function leadRow(lead: ParsedLead, raw: unknown) {
@@ -83,10 +110,9 @@ async function upsertLeads(supabase: ReturnType<typeof createClient>, posts: Lin
 export async function importScrapedPosts(raw: string) {
   try {
     const { supabase } = await verifyAdmin();
-    const parsed = JSON.parse(raw);
-    const posts = Array.isArray(parsed) ? parsed : parsed?.items || parsed?.data || [];
-    if (!Array.isArray(posts) || posts.length === 0) {
-      return { error: 'Paste an Apify JSON array of LinkedIn posts.' };
+    const posts = collectPosts(raw);
+    if (posts.length === 0) {
+      return { error: 'No LinkedIn posts were found in that JSON.' };
     }
     const result = await upsertLeads(supabase, posts);
     revalidatePath('/dashboard/admin/scrape');
@@ -105,7 +131,7 @@ export async function startApifyScrape(formData: FormData) {
     }
 
     const query = String(formData.get('query') || 'outside ir35').trim();
-    const maxPosts = Math.min(Number(formData.get('maxPosts')) || 20, 50);
+    const maxPosts = requestedMaxPosts(formData.get('maxPosts'));
     const postedLimit = String(formData.get('postedLimit') || 'week');
     const actorId = encodeURIComponent(DEFAULT_ACTOR);
     const response = await fetch(`https://api.apify.com/v2/acts/${actorId}/runs?token=${token}`, {
@@ -145,12 +171,10 @@ export async function ingestApifyDataset(datasetId: string) {
     const id = datasetId.trim();
     if (!id) return { error: 'Missing Apify dataset id' };
 
-    const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${id}/items?token=${token}`);
-    const items = await itemsRes.json();
-    if (!itemsRes.ok) return { error: items?.error?.message || 'Could not read Apify dataset' };
-    if (!Array.isArray(items)) return { error: 'Apify dataset was empty or invalid' };
+    const loaded = await fetchDatasetPosts(id, token);
+    if ('error' in loaded) return loaded;
 
-    const result = await upsertLeads(supabase, items);
+    const result = await upsertLeads(supabase, loaded.posts);
     revalidatePath('/dashboard/admin/scrape');
     return { success: true, ...result };
   } catch (error: any) {
@@ -177,11 +201,11 @@ export async function ingestApifyRun(runId: string) {
     }
 
     const datasetId = runBody?.data?.defaultDatasetId;
-    const itemsRes = await fetch(`https://api.apify.com/v2/datasets/${datasetId}/items?token=${token}`);
-    const items = await itemsRes.json();
-    if (!Array.isArray(items)) return { error: 'Apify dataset was empty or invalid' };
+    if (!datasetId) return { error: 'That run has no dataset yet.' };
+    const loaded = await fetchDatasetPosts(datasetId, token);
+    if ('error' in loaded) return loaded;
 
-    const result = await upsertLeads(supabase, items);
+    const result = await upsertLeads(supabase, loaded.posts);
     revalidatePath('/dashboard/admin/scrape');
     return { success: true, status, ...result };
   } catch (error: any) {

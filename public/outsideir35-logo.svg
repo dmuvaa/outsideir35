@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 160" role="img" aria-labelledby="title desc">
+  <title id="title">OutsideIR35</title>
+  <desc id="desc">OutsideIR35 wordmark with violet O symbol and emerald exit path.</desc>
+  <defs>
+    <linearGradient id="surface" x1="16" y1="10" x2="144" y2="151" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#312e81"/>
+      <stop offset=".58" stop-color="#6d28d9"/>
+      <stop offset="1" stop-color="#4c1d95"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="40" y1="36" x2="126" y2="129" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f5f3ff"/>
+      <stop offset="1" stop-color="#c4b5fd"/>
+    </linearGradient>
+    <linearGradient id="exit" x1="79" y1="89" x2="137" y2="117" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6ee7b7"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <linearGradient id="type" x1="184" y1="30" x2="704" y2="127" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#312e81"/>
+      <stop offset=".7" stop-color="#6d28d9"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="144" height="144" rx="38" fill="url(#surface)"/>
+  <path d="M80 41c-24 0-44 20-44 44s20 44 44 44c10 0 19-3 27-9" fill="none" stroke="url(#ring)" stroke-linecap="round" stroke-width="17"/>
+  <path d="M80 41c24 0 44 20 44 44 0 6-1 11-3 17" fill="none" stroke="url(#ring)" stroke-linecap="round" stroke-width="17"/>
+  <path d="M72 93h32l-9-9m9 9-9 9" fill="none" stroke="url(#exit)" stroke-linecap="round" stroke-linejoin="round" stroke-width="10"/>
+  <circle cx="125" cy="93" r="5" fill="#6ee7b7"/>
+  <text x="178" y="106" fill="url(#type)" font-family="Outfit, Inter, Arial, sans-serif" font-size="76" font-weight="800" letter-spacing="-3">OutsideIR35</text>
+</svg>

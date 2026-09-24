@@ -89,6 +89,44 @@ export function parseApifyItems(items: unknown[]): ParsedLead[] {
   return dedupeLeads(leads);
 }
 
+export function collectPosts(input: unknown): LinkedInPost[] {
+  return payloadItems(input).filter(isPost);
+}
+
+function payloadItems(input: unknown): unknown[] {
+  if (typeof input === 'string') {
+    const trimmed = input.replace(/^\uFEFF/, '').trim();
+    if (!trimmed) return [];
+    try {
+      return payloadItems(JSON.parse(trimmed));
+    } catch {
+      return trimmed.split(/\r?\n/).flatMap((line) => {
+        const text = line.trim().replace(/,$/, '');
+        if (!text || text === '[' || text === ']') return [];
+        try {
+          return payloadItems(JSON.parse(text));
+        } catch {
+          return [];
+        }
+      });
+    }
+  }
+  if (Array.isArray(input)) return input.flatMap((item) => payloadItems(item));
+  if (input && typeof input === 'object') {
+    const record = input as Record<string, unknown>;
+    for (const key of ['items', 'data', 'results', 'posts']) {
+      const nested = record[key];
+      if (Array.isArray(nested) && nested.length > 0) return nested.flatMap((item) => payloadItems(item));
+      if (nested && typeof nested === 'object') {
+        const inner = payloadItems(nested);
+        if (inner.length > 1 || (inner.length === 1 && inner[0] !== nested)) return inner;
+      }
+    }
+    return [input];
+  }
+  return [];
+}
+
 export function parseLinkedInPost(post: LinkedInPost): ParsedLead[] {
   const working = unwrapPost(post);
   const sourceUrl = working.linkedinUrl || post.linkedinUrl || '';

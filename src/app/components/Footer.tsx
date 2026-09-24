@@ -45,14 +45,13 @@ export default function Footer() {
         }}>
           {/* Logo & Vision Block */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h3 style={{
-              fontFamily: 'var(--font-header)',
-              fontSize: '20px',
-              fontWeight: '800',
-              color: 'var(--text-primary)'
-            }}>
-              OutsideIR35
-            </h3>
+            <img
+              src="/outsideir35-logo.svg"
+              alt="OutsideIR35"
+              width="190"
+              height="40"
+              style={{ width: '190px', height: '40px', objectFit: 'contain', objectPosition: 'left center' }}
+            />
             <p style={{ lineHeight: '1.6', fontSize: '13px', color: 'var(--text-muted)' }}>
               "Indeed meets Contractor UK". The definitive search engine and compliance authority for contract and freelance engagements in the UK and overseas.
             </p>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">OutsideIR35 icon</title>
+  <desc id="desc">A violet circular O with an emerald path moving beyond its boundary.</desc>
+  <defs>
+    <linearGradient id="surface" x1="54" y1="40" x2="458" y2="472" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#312e81"/>
+      <stop offset=".56" stop-color="#6d28d9"/>
+      <stop offset="1" stop-color="#4c1d95"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="119" y1="112" x2="385" y2="399" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f5f3ff"/>
+      <stop offset="1" stop-color="#c4b5fd"/>
+    </linearGradient>
+    <linearGradient id="exit" x1="238" y1="290" x2="422" y2="379" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6ee7b7"/>
+      <stop offset="1" stop-color="#10b981"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#1e1b4b" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="132" fill="url(#surface)"/>
+  <path d="M256 118c-76 0-138 62-138 138s62 138 138 138c31 0 60-10 84-29" fill="none" stroke="url(#ring)" stroke-linecap="round" stroke-width="52" filter="url(#shadow)"/>
+  <path d="M256 118c76 0 138 62 138 138 0 18-4 36-10 52" fill="none" stroke="url(#ring)" stroke-linecap="round" stroke-width="52" filter="url(#shadow)"/>
+  <path d="M230 281h101l-30-30M331 281l-30 30" fill="none" stroke="url(#exit)" stroke-linecap="round" stroke-linejoin="round" stroke-width="32"/>
+  <circle cx="398" cy="281" r="17" fill="#6ee7b7"/>
+</svg>

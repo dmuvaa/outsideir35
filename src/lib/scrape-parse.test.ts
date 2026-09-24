@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseApifyItems, parseLinkedInPost, type LinkedInPost } from './scrape-parse.ts';
+import { collectPosts, parseApifyItems, parseLinkedInPost, type LinkedInPost } from './scrape-parse.ts';
 
 test('clear single Outside IR35 post is publishable', () => {
   const [lead] = parseLinkedInPost({
@@ -151,6 +151,18 @@ test('numbered Outside IR35 lines split out of an aggregator list', () => {
   assert.equal(leads.length, 2);
   assert.deepEqual(leads.map((lead) => lead.title), ['Lead AI Engineers', 'AI Architect']);
   assert.ok(leads.every((lead) => lead.classification === 'needs_review'));
+});
+
+test('wrapped and single-post JSON still count as posts', () => {
+  const post = {
+    id: '11',
+    content: 'Senior Java — Outside IR35 — £600 per day — London',
+    author: { name: 'Recruiter' },
+    linkedinUrl: 'https://www.linkedin.com/posts/recruiter',
+  };
+  assert.equal(collectPosts(post).length, 1);
+  assert.equal(collectPosts({ data: { items: [post], total: 1, limit: 20 } }).length, 1);
+  assert.equal(collectPosts(`${JSON.stringify(post)}\n${JSON.stringify({ ...post, id: '12' })}`).length, 2);
 });
 
 test('import dedupes the same role from a post and its repost', () => {

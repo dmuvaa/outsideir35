@@ -111,8 +111,8 @@ export default function ScrapeInbox({ leads, apifyConfigured }: { leads: Lead[];
             <input name="query" defaultValue="outside ir35" className="input-field" style={{ display: 'block', marginTop: '4px' }} />
           </label>
           <label style={{ fontSize: '13px' }}>
-            Max posts
-            <input name="maxPosts" type="number" defaultValue={20} min={1} max={50} className="input-field" style={{ display: 'block', marginTop: '4px', width: '90px' }} />
+            Max posts (0 = all)
+            <input name="maxPosts" type="number" defaultValue={0} min={0} className="input-field" style={{ display: 'block', marginTop: '4px', width: '90px' }} />
           </label>
           <label style={{ fontSize: '13px' }}>
             Posted
