@@ -29,8 +29,30 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Deploy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The app needs a Node.js host (Vercel, or `npm run build` then `npm run start`). Copy `.env.example` and set:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+- `NEXT_PUBLIC_SITE_URL` — the public https origin, used for the sitemap
+- `APIFY_TOKEN` — only if admins run live scrapes from the dashboard
+
+Sign-in is an email code. There is no password. In Supabase → Authentication → Email Templates, replace the Magic Link template body with the code only:
+
+```html
+<h2>Your OutsideIR35 code</h2>
+<p>Enter this code to sign in: {{ .Token }}</p>
+```
+
+Apply the SQL files in `supabase/migrations/` in filename order, including `20260924153000_otp_auth.sql`.
+
+In the Supabase dashboard, set Auth → URL configuration:
+
+- Site URL: the same value as `NEXT_PUBLIC_SITE_URL`
+- Redirect URLs: `https://YOUR_DOMAIN/auth/callback` and `http://localhost:3000/auth/callback`
+
+```bash
+npm run build
+npm run start
+```

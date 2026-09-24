@@ -557,19 +557,16 @@ const usersData = [
   {
     id: '11111111-1111-1111-1111-111111111111',
     email: 'contractor@example.com',
-    password_hash: 'Password123!',
     role: 'candidate'
   },
   {
     id: '22222222-2222-2222-2222-222222222222',
     email: 'hiring@devtech.example.com',
-    password_hash: 'Password123!',
     role: 'recruiter'
   },
   {
     id: '33333333-3333-3333-3333-333333333333',
     email: 'admin@outsideir35.co.uk',
-    password_hash: 'Password123!',
     role: 'admin'
   }
 ];

@@ -6,14 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --experimental-strip-types --test src/lib/platform.test.ts src/lib/actions.test.ts src/lib/scrape-parse.test.ts",
+    "test:http": "node scripts/test-http.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
+    "dotenv": "^17.4.2",
     "next": "16.2.9",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-quill-new": "^3.8.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

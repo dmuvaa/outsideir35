@@ -56,10 +56,10 @@ DELETE FROM audit_logs;
 DELETE FROM consent_records;
 
 -- 4. Insert Default Users
-INSERT INTO users (id, email, password_hash, role) VALUES
-('11111111-1111-1111-1111-111111111111', 'contractor@example.com', 'Password123!', 'candidate'),
-('22222222-2222-2222-2222-222222222222', 'hiring@devtech.example.com', 'Password123!', 'recruiter'),
-('33333333-3333-3333-3333-333333333333', 'admin@outsideir35.co.uk', 'Password123!', 'admin');
+INSERT INTO users (id, email, role) VALUES
+('11111111-1111-1111-1111-111111111111', 'contractor@example.com', 'candidate'),
+('22222222-2222-2222-2222-222222222222', 'hiring@devtech.example.com', 'recruiter'),
+('33333333-3333-3333-3333-333333333333', 'admin@outsideir35.co.uk', 'admin');
 
 -- 5. Insert Profiles
 INSERT INTO candidate_profiles (user_id, first_name, last_name, headline, bio, location, website_url, linkedin_url, availability, min_day_rate, max_day_rate, clearance_level, resume_url, is_profile_public) VALUES

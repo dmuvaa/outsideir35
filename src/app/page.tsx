@@ -1,58 +1,34 @@
-'use strict';
-
-'use client';
-
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { db, Job } from '@/lib/db';
+import { getJobsServer, getCompaniesServer, getGuidesServer } from '@/lib/server-data';
+import SearchForm from './components/SearchForm';
+import { companyHref, formatDayRate } from '@/lib/platform';
 
-export default function Home() {
-  const router = useRouter();
-  const [keyword, setKeyword] = useState('');
-  const [location, setLocation] = useState('');
-  const [featuredJobs, setFeaturedJobs] = useState<Job[]>([]);
-  const [companies, setCompanies] = useState<any[]>([]);
-  const [guides, setGuides] = useState<any[]>([]);
+export default async function Home() {
+  const [allJobs, companies, guides] = await Promise.all([
+    getJobsServer(),
+    getCompaniesServer(),
+    getGuidesServer(),
+  ]);
 
-  // Homepage quick filters states
-  const [showFilters, setShowFilters] = useState(false);
-  const [ir35Status, setIr35Status] = useState('all');
-  const [remoteOnly, setRemoteOnly] = useState(false);
-  const [scCleared, setScCleared] = useState(false);
+  const featuredJobs = [...allJobs]
+    .sort((a, b) => Number(b.featured) - Number(a.featured) || Number(b.ir35Status === 'outside') - Number(a.ir35Status === 'outside'))
+    .slice(0, 3);
 
-  useEffect(() => {
-    // Fetch seed data
-    db.getJobs().then(jobs => {
-      setFeaturedJobs(jobs.filter(j => j.featured).slice(0, 3));
-    });
-    db.getCompanies().then(comps => {
-      setCompanies(comps.slice(0, 4));
-    });
-    db.getGuides().then(g => {
-      setGuides(g.slice(0, 3));
-    });
-  }, []);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    const params = new URLSearchParams();
-    if (keyword) params.set('q', keyword);
-    if (location) params.set('location', location);
-    if (ir35Status !== 'all') params.set('ir35', ir35Status);
-    if (remoteOnly) params.set('remote', 'remote');
-    if (scCleared) params.set('clearance', 'SC');
-    router.push(`/jobs?${params.toString()}`);
-  };
+  const industryCounts: Record<string, number> = {};
+  for (const job of allJobs) {
+    const key = job.industry || 'Technology';
+    industryCounts[key] = (industryCounts[key] || 0) + 1;
+  }
 
   const categories = [
-    { name: 'Technology', icon: '💻', count: 12, slug: 'technology-contract-jobs' },
-    { name: 'Finance', icon: '📈', count: 8, slug: 'finance-contract-jobs' },
-    { name: 'Engineering', icon: '⚙️', count: 5, slug: 'engineering-contract-jobs' },
-    { name: 'Healthcare', icon: '💙', count: 6, slug: 'healthcare-contract-jobs' },
-    { name: 'Construction', icon: '🏗️', count: 4, slug: 'construction-contract-jobs' },
-    { name: 'Government', icon: '🏛️', count: 7, slug: 'government-contract-jobs' }
-  ];
+    { name: 'Technology', icon: '💻', slug: 'technology-contract-jobs' },
+    { name: 'Finance', icon: '📈', slug: 'finance-contract-jobs' },
+    { name: 'Engineering', icon: '⚙️', slug: 'engineering-contract-jobs' },
+    { name: 'Healthcare', icon: '💙', slug: 'healthcare-contract-jobs' },
+    { name: 'Construction', icon: '🏗️', slug: 'construction-contract-jobs' },
+    { name: 'Government', icon: '🏛️', slug: 'government-contract-jobs' }
+  ].map((cat) => ({ ...cat, count: industryCounts[cat.name] || 0 }));
 
   const popularSkills = ['React', 'Python', 'AWS', 'SAP', 'Power BI', 'SQL', 'Terraform', 'Kubernetes'];
 
@@ -82,130 +58,10 @@ export default function Home() {
             marginBottom: '40px',
             lineHeight: '1.6'
           }}>
-            Assess your status, search verified Outside IR35 contract roles, and optimize your take-home tax strategies in one unified platform.
+            Assess IR35 status, search live Outside IR35 contracts, and apply with a single contractor profile.
           </p>
 
-          {/* Large Search Bar Wrapper */}
-          <div style={{ position: 'relative', width: '100%' }}>
-            <form onSubmit={handleSearch} className="glass-panel search-hero-box" style={{
-              boxShadow: 'var(--shadow-lg), var(--shadow-glow)',
-              position: 'relative',
-              zIndex: 10
-            }}>
-              <div className="search-input-group">
-                <span style={{ fontSize: '18px' }}>🔍</span>
-                <input
-                  type="text"
-                  placeholder="Keywords, skills, or roles..."
-                  value={keyword}
-                  onChange={(e) => setKeyword(e.target.value)}
-                />
-              </div>
-              <div className="search-input-group">
-                <span style={{ fontSize: '18px' }}>📍</span>
-                <input
-                  type="text"
-                  placeholder="Location (e.g. London, Remote)..."
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                />
-              </div>
-              
-              {/* Quick Filters Toggle Button inside the bar */}
-              <button
-                type="button"
-                onClick={() => setShowFilters(!showFilters)}
-                className="btn btn-secondary"
-                style={{
-                  padding: '10px 16px',
-                  border: '1px solid var(--panel-border)',
-                  whiteSpace: 'nowrap',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-                }}
-              >
-                🎛️ Filters { (ir35Status !== 'all' || remoteOnly || scCleared) && <span style={{ color: 'var(--color-primary)', fontWeight: 'bold' }}>•</span> }
-              </button>
-
-              <button type="submit" className="btn btn-primary" style={{ padding: '12px 24px', whiteSpace: 'nowrap' }}>
-                Search Contracts
-              </button>
-            </form>
-
-            {/* Quick Filters Dropdown Panel */}
-            {showFilters && (
-              <div className="glass-panel fade-in" style={{
-                position: 'absolute',
-                top: 'calc(100% + 8px)',
-                left: 0,
-                right: 0,
-                padding: '20px',
-                zIndex: 9,
-                display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-                gap: '20px',
-                textAlign: 'left',
-                backgroundColor: 'var(--panel-bg-solid)',
-                boxShadow: 'var(--shadow-lg)'
-              }}>
-                {/* IR35 Group */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-                    IR35 Compliance
-                  </span>
-                  <select
-                    value={ir35Status}
-                    onChange={(e) => setIr35Status(e.target.value)}
-                    style={{
-                      padding: '10px 12px',
-                      fontSize: '14px',
-                      borderRadius: 'var(--radius-sm)',
-                      background: 'var(--bg-color)',
-                      border: '1px solid var(--panel-border)',
-                      color: 'var(--text-primary)'
-                    }}
-                  >
-                    <option value="all">Show All Roles</option>
-                    <option value="outside">Outside IR35 Only</option>
-                    <option value="inside">Inside IR35 Only</option>
-                  </select>
-                </div>
-
-                {/* Remote Work Group */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-                    Workplace Type
-                  </span>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                    <input
-                      type="checkbox"
-                      checked={remoteOnly}
-                      onChange={(e) => setRemoteOnly(e.target.checked)}
-                      style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary)' }}
-                    />
-                    Remote Contracts Only
-                  </label>
-                </div>
-
-                {/* Clearance Group */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <span style={{ fontSize: '12px', fontWeight: '700', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-                    Security Clearance
-                  </span>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: 'var(--text-secondary)' }}>
-                    <input
-                      type="checkbox"
-                      checked={scCleared}
-                      onChange={(e) => setScCleared(e.target.checked)}
-                      style={{ width: '16px', height: '16px', accentColor: 'var(--color-primary)' }}
-                    />
-                    Requires SC Clearance
-                  </label>
-                </div>
-              </div>
-            )}
-          </div>
+          <SearchForm />
 
           {/* Quick links search badges */}
           <div style={{
@@ -237,7 +93,7 @@ export default function Home() {
           }}>
             <div>
               <h2 style={{ fontSize: '28px' }}>Featured Contracts</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Latest handpicked contract roles assessed as compliant</p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '14px' }}>Latest live contract roles on the board</p>
             </div>
             <Link href="/jobs" className="nav-link" style={{ fontWeight: '600' }}>
               View all contracts &rarr;
@@ -245,20 +101,30 @@ export default function Home() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {featuredJobs.map((job) => (
+            {featuredJobs.length === 0 ? (
+              <div className="glass-panel" style={{ padding: '32px', textAlign: 'center' }}>
+                <p style={{ color: 'var(--text-secondary)' }}>No live contracts yet. Check back shortly or post a role.</p>
+                <Link href="/jobs" className="btn btn-secondary btn-sm" style={{ marginTop: '12px' }}>Browse the board</Link>
+              </div>
+            ) : featuredJobs.map((job) => (
               <div key={job.id} className="glass-panel glass-panel-hover job-card">
                 <div className="job-card-header">
                   <div>
                     <h3 className="job-title">
                       <Link href={`/jobs/${job.slug}`}>{job.title}</Link>
                     </h3>
-                    <Link href={`/companies/${job.companyId}`} className="job-company">
-                      {job.companyLogo} {job.companyName}
+                    <Link href={companyHref({ slug: (job as any).companySlug, id: job.companyId })} className="job-company" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--text-secondary)' }}>
+                      {(job.companyLogo && (job.companyLogo.startsWith('/') || job.companyLogo.startsWith('http'))) ? (
+                        <img src={job.companyLogo} alt={`${job.companyName} logo`} style={{ width: '20px', height: '20px', borderRadius: '4px', objectFit: 'contain', background: 'white' }} />
+                      ) : (
+                        <span>{job.companyLogo}</span>
+                      )}
+                      {job.companyName}
                     </Link>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontSize: '18px', fontWeight: '800', color: 'var(--text-primary)' }}>
-                      £{job.dayRateMin} - £{job.dayRateMax}
+                      {formatDayRate(job.dayRateMin, job.dayRateMax)}
                     </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>per day</div>
                   </div>
@@ -266,15 +132,15 @@ export default function Home() {
 
                 <div className="job-meta-row">
                   <div className="job-meta-item">📍 {job.location}</div>
-                  <div className="job-meta-item">💻 {job.remoteType.toUpperCase()}</div>
-                  <div className="job-meta-item">🛡️ Clearance: {job.clearanceLevel}</div>
+                  <div className="job-meta-item">💻 {job.remoteType?.toUpperCase() || 'UNKNOWN'}</div>
+                  <div className="job-meta-item">🛡️ Clearance: {job.clearanceLevel || 'None'}</div>
                 </div>
 
                 <div className="job-tags-row">
                   <span className={`tag-badge ${job.ir35Status === 'outside' ? 'tag-outside' : 'tag-inside'}`}>
                     {job.ir35Status === 'outside' ? 'Outside IR35' : 'Inside IR35'}
                   </span>
-                  {job.skills.slice(0, 3).map((skill) => (
+                  {job.skills?.slice(0, 3).map((skill: string) => (
                     <span key={skill} className="tag-badge tag-normal">{skill}</span>
                   ))}
                 </div>
@@ -346,28 +212,28 @@ export default function Home() {
       {/* Latest Companies & Guides Section */}
       <section>
         <div className="container">
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: '40px'
-          }}>
+          <div className="dashboard-grid">
             {/* Left: Latest Companies */}
             <div>
               <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>Top Contract Employers</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {companies.map((comp) => (
+                {companies.slice(0, 4).map((comp: any) => (
                   <Link key={comp.id} href={`/companies/${comp.slug}`} className="glass-panel glass-panel-hover" style={{
                     padding: '16px',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '16px'
                   }}>
-                    <span style={{ fontSize: '24px', padding: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: 'var(--radius-sm)' }}>
-                      {comp.logo}
-                    </span>
+                    <div style={{ fontSize: '32px' }}>
+                      {(comp?.logo_url && (comp.logo_url.startsWith('/') || comp.logo_url.startsWith('http'))) ? (
+                        <img src={comp.logo_url} alt={`${comp.name} logo`} style={{ width: '40px', height: '40px', borderRadius: '8px', objectFit: 'contain', background: 'white' }} />
+                      ) : (
+                        comp?.logo_url || '🏢'
+                      )}
+                    </div>
                     <div>
                       <h4 style={{ color: 'var(--text-primary)', fontSize: '15px' }}>
-                        {comp.name} {comp.verified && <span style={{ color: 'var(--color-outside)', fontSize: '12px' }}>✓ Verified</span>}
+                        {comp.name} {(comp.verified || comp.is_verified) && <span style={{ color: 'var(--color-outside)', fontSize: '12px' }}>Verified</span>}
                       </h4>
                       <p style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{comp.industry} &bull; {comp.location}</p>
                     </div>
@@ -380,13 +246,13 @@ export default function Home() {
             <div>
               <h2 style={{ fontSize: '24px', marginBottom: '20px' }}>Contractor Compliance Center</h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {guides.map((guide) => (
+                {guides.slice(0, 3).map((guide: any) => (
                   <Link key={guide.id} href={`/guides/${guide.slug}`} className="glass-panel glass-panel-hover" style={{
                     padding: '16px',
                     display: 'block'
                   }}>
                     <span className="tag-badge tag-normal" style={{ marginBottom: '8px' }}>
-                      {guide.guideCategory.toUpperCase()}
+                      {(guide.guide_category || '').toUpperCase()}
                     </span>
                     <h4 style={{ color: 'var(--text-primary)', fontSize: '15px', marginBottom: '6px' }}>
                       {guide.title}

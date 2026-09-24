@@ -1,17 +1,18 @@
-'use strict';
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { db } from '@/lib/db';
+import { usePathname } from 'next/navigation';
+import { logout } from '@/app/actions/auth';
 
-export default function Navbar() {
+interface NavbarProps {
+  user: { email: string | undefined; role: string } | null;
+}
+
+export default function Navbar({ user }: NavbarProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [theme, setTheme] = useState<'dark' | 'light'>('light');
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     // Sync theme
@@ -23,9 +24,6 @@ export default function Navbar() {
     } else {
       document.body.classList.remove('dark-mode');
     }
-
-    // Sync auth user
-    setCurrentUser(db.getAuthUser());
   }, []);
 
   const toggleTheme = () => {
@@ -41,7 +39,7 @@ export default function Navbar() {
 
   return (
     <header className="site-header">
-      <div className="container header-container">
+      <div className="container header-container" style={{ position: 'relative' }}>
         <Link href="/" className="logo-wrapper">
           <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ stroke: 'url(#violetGlow)' }}>
             <defs>
@@ -55,55 +53,112 @@ export default function Navbar() {
           OutsideIR35
         </Link>
 
-        <nav className="nav-links">
-          <Link href="/jobs" className={`nav-link ${pathname === '/jobs' ? 'active' : ''}`}>
-            Find Contracts
-          </Link>
-          <Link href="/companies" className={`nav-link ${pathname === '/companies' ? 'active' : ''}`}>
-            Companies
-          </Link>
-          <Link href="/blog" className={`nav-link ${pathname?.startsWith('/blog') ? 'active' : ''}`}>
-            Contractor Blog
-          </Link>
-          <Link href="/guides" className={`nav-link ${pathname?.startsWith('/guides') ? 'active' : ''}`}>
-            Compliance Guides
-          </Link>
+        {/* Hamburger Menu Toggle (Mobile Only) */}
+        <button 
+          className="mobile-menu-toggle" 
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle menu"
+        >
+          {mobileMenuOpen ? '✖' : '☰'}
+        </button>
+
+        <nav className={`nav-links ${mobileMenuOpen ? 'mobile-open' : ''}`}>
+          {!user && (
+            <>
+              <Link href="/jobs" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/jobs' ? 'active' : ''}`}>
+                Find Contracts
+              </Link>
+              <Link href="/companies" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/companies' ? 'active' : ''}`}>
+                Companies
+              </Link>
+              <Link href="/login?next=%2Fregister%3Frole%3Drecruiter" onClick={() => setMobileMenuOpen(false)} className={`nav-link`}>
+                Post a Contract
+              </Link>
+              <Link href="/pricing" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/pricing' ? 'active' : ''}`}>
+                Pricing
+              </Link>
+            </>
+          )}
+
+          {user?.role === 'candidate' && (
+            <>
+              <Link href="/dashboard/candidate" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/dashboard/candidate' ? 'active' : ''}`}>
+                My Dashboard
+              </Link>
+              <Link href="/jobs" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/jobs' ? 'active' : ''}`}>
+                Find Contracts
+              </Link>
+              <Link href="/companies" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/companies' ? 'active' : ''}`}>
+                Companies
+              </Link>
+              <Link href="/dashboard/candidate/settings" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname?.includes('/settings') ? 'active' : ''}`}>
+                Profile & Settings
+              </Link>
+            </>
+          )}
+
+          {user?.role === 'recruiter' && (
+            <>
+              <Link href="/dashboard/recruiter" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/dashboard/recruiter' ? 'active' : ''}`}>
+                Dashboard
+              </Link>
+              <Link href="/dashboard/recruiter/jobs" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname?.includes('/jobs') ? 'active' : ''}`}>
+                Manage Postings
+              </Link>
+              <Link href="/dashboard/recruiter/applications" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname?.includes('/applications') ? 'active' : ''}`}>
+                Applications
+              </Link>
+              <Link href="/dashboard/recruiter/settings" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname?.includes('/settings') ? 'active' : ''}`}>
+                Company Settings
+              </Link>
+            </>
+          )}
+
+          {user?.role === 'admin' && (
+            <>
+              <Link href="/dashboard/admin" onClick={() => setMobileMenuOpen(false)} className={`nav-link ${pathname === '/dashboard/admin' ? 'active' : ''}`}>
+                Admin Dashboard
+              </Link>
+            </>
+          )}
         </nav>
 
-        <div className="nav-actions">
+        <div className={`nav-actions ${mobileMenuOpen ? 'mobile-open' : ''}`}>
           {/* Theme Switcher Toggle */}
-          <button onClick={toggleTheme} className="btn btn-secondary btn-sm" aria-label="Toggle Theme" style={{ padding: '8px' }}>
+          <button onClick={toggleTheme} className="btn btn-secondary btn-sm theme-toggle" aria-label="Toggle Theme" style={{ padding: '8px' }}>
             {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
           </button>
 
-          {!currentUser ? (
+          {!user ? (
             <>
-              <Link href="/login" className="btn btn-secondary btn-sm">
+              <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="btn btn-secondary btn-sm">
                 Sign In
               </Link>
-              <Link href="/register" className="btn btn-primary btn-sm">
-                Register
+              <Link href="/login" onClick={() => setMobileMenuOpen(false)} className="btn btn-primary btn-sm">
+                Get started
               </Link>
             </>
           ) : (
             <>
-              <span style={{ fontSize: '13px', color: 'var(--text-secondary)', marginRight: '8px' }}>
-                👤 {currentUser.email}
+              <span className="user-email">
+                👤 {user.email}
               </span>
-              <Link href={currentUser.role === 'candidate' ? '/dashboard' : currentUser.role === 'recruiter' ? '/employer' : '/admin'} className="btn btn-primary btn-sm">
-                {currentUser.role === 'candidate' ? 'Candidate Dashboard' : currentUser.role === 'recruiter' ? 'Recruiter Dashboard' : 'Admin Portal'}
-              </Link>
-              <button 
-                onClick={async () => {
-                  await db.logout();
-                  setCurrentUser(null);
-                  router.push('/');
-                  router.refresh();
-                }} 
-                className="btn btn-secondary btn-sm"
+              <Link 
+                href={user.role === 'candidate' ? '/dashboard/candidate' : user.role === 'recruiter' ? '/dashboard/recruiter' : '/dashboard/admin'} 
+                onClick={() => setMobileMenuOpen(false)}
+                className="btn btn-primary btn-sm"
               >
-                Logout
-              </button>
+                {user.role === 'candidate' ? 'Candidate Dashboard' : user.role === 'recruiter' ? 'Recruiter Dashboard' : 'Admin Portal'}
+              </Link>
+              <form action={logout}>
+                <button 
+                  type="submit"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Logout
+                </button>
+              </form>
             </>
           )}
         </div>

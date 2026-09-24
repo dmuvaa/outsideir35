@@ -1,4 +1,5 @@
 import { createClient } from '@/utils/supabase/client';
+import { getProxyImageUrl } from '@/lib/image-utils';
 
 export interface Company {
   id: string;
@@ -38,6 +39,7 @@ export interface Job {
   applications: number;
   featured: boolean;
   status: 'active' | 'draft' | 'expired' | 'archived';
+  companySlug?: string;
 }
 
 export interface Application {
@@ -160,7 +162,7 @@ class SupabaseDB {
       slug: j.slug,
       companyId: j.company_id,
       companyName: j.companies?.name || 'Unknown Company',
-      companyLogo: j.companies?.logo_url || '🏢',
+      companyLogo: getProxyImageUrl(j.companies?.logo_url) || '🏢',
       descriptionHtml: j.description_html,
       requirements: this.safeJsonParse(j.requirements),
       responsibilities: this.safeJsonParse(j.responsibilities),
@@ -215,7 +217,7 @@ class SupabaseDB {
       slug: data.slug,
       companyId: data.company_id,
       companyName: data.companies?.name || 'Unknown Company',
-      companyLogo: data.companies?.logo_url || '🏢',
+      companyLogo: getProxyImageUrl(data.companies?.logo_url) || '🏢',
       descriptionHtml: data.description_html,
       requirements: this.safeJsonParse(data.requirements),
       responsibilities: this.safeJsonParse(data.responsibilities),
@@ -303,7 +305,7 @@ class SupabaseDB {
       slug: data.slug,
       companyId: data.company_id,
       companyName: company ? company.name : 'Unknown Company',
-      companyLogo: company ? company.logo : '🏢',
+      companyLogo: company ? company.logo : '🏢', // already proxied via getCompanyById
       descriptionHtml: data.description_html,
       requirements: jobData.requirements,
       responsibilities: jobData.responsibilities,
@@ -341,7 +343,7 @@ class SupabaseDB {
       id: c.id,
       name: c.name,
       slug: c.slug,
-      logo: c.logo_url || '🏢',
+      logo: getProxyImageUrl(c.logo_url) || '🏢',
       description: c.description || '',
       website: c.website_url || '',
       size: c.size_band || '1-10',
@@ -366,7 +368,7 @@ class SupabaseDB {
       id: data.id,
       name: data.name,
       slug: data.slug,
-      logo: data.logo_url || '🏢',
+      logo: getProxyImageUrl(data.logo_url) || '🏢',
       description: data.description || '',
       website: data.website_url || '',
       size: data.size_band || '1-10',
@@ -388,7 +390,7 @@ class SupabaseDB {
       id: data.id,
       name: data.name,
       slug: data.slug,
-      logo: data.logo_url || '🏢',
+      logo: getProxyImageUrl(data.logo_url) || '🏢',
       description: data.description || '',
       website: data.website_url || '',
       size: data.size_band || '1-10',
@@ -545,7 +547,6 @@ class SupabaseDB {
     await supabase.from('users').upsert({
       id: profile.userId,
       email: profile.email,
-      password_hash: 'Password123!',
       role: 'candidate'
     });
 
@@ -627,7 +628,6 @@ class SupabaseDB {
     await supabase.from('users').upsert({
       id: profile.userId,
       email: profile.email,
-      password_hash: 'Password123!',
       role: 'recruiter'
     });
 
@@ -855,25 +855,8 @@ class SupabaseDB {
     });
   }
 
-  public async login(email: string, password: string): Promise<{ id: string; email: string; role: 'candidate' | 'recruiter' | 'admin' }> {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    if (!data.user) throw new Error('Login failed');
-
-    const { data: dbUser, error: roleError } = await supabase
-      .from('users')
-      .select('role')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
-    if (roleError) {
-      console.error('Error fetching user role:', roleError);
-    }
-
-    const role = dbUser?.role || 'candidate';
-    const user = { id: data.user.id, email: data.user.email!, role: role as 'candidate' | 'recruiter' | 'admin' };
-    this.setAuthUser(user);
-    return user;
+  public async login(_email: string, _password: string): Promise<{ id: string; email: string; role: 'candidate' | 'recruiter' | 'admin' }> {
+    throw new Error('Password sign-in is disabled. Use the email code on /login.');
   }
 
   public async logout(): Promise<void> {
@@ -884,36 +867,8 @@ class SupabaseDB {
     this.setAuthUser(null);
   }
 
-  public async register(email: string, password: string, role: 'candidate' | 'recruiter' | 'admin'): Promise<{ id: string; email: string; role: 'candidate' | 'recruiter' | 'admin' }> {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) {
-      if (error.message.toLowerCase().includes('already registered') || error.message.toLowerCase().includes('already exists')) {
-        throw new Error('This email address is already registered.');
-      }
-      throw error;
-    }
-    if (!data.user) throw new Error('Registration failed');
-
-    const { error: dbError } = await supabase
-      .from('users')
-      .insert({
-        id: data.user.id,
-        email: email,
-        role: role,
-        password_hash: 'auth_managed'
-      });
-
-    if (dbError) {
-      console.error('Error creating public user record:', dbError);
-      if (dbError.code === '23505') {
-        throw new Error('This email address is already registered.');
-      }
-      throw dbError;
-    }
-
-    const user = { id: data.user.id, email: data.user.email!, role };
-    this.setAuthUser(user);
-    return user;
+  public async register(_email: string, _password: string, _role: 'candidate' | 'recruiter' | 'admin'): Promise<{ id: string; email: string; role: 'candidate' | 'recruiter' | 'admin' }> {
+    throw new Error('Password registration is disabled. Use the email code on /login.');
   }
 
   public async uploadCV(file: File): Promise<string> {

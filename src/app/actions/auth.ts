@@ -1,0 +1,212 @@
+'use server';
+
+import { createClient } from '@/utils/supabase/server';
+import { cookies, headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { getDbRole } from '@/lib/auth-role';
+import { slugify, validateRegisterInput } from '@/lib/platform';
+
+function dashboardFor(role: string) {
+  if (role === 'recruiter') return '/dashboard/recruiter';
+  if (role === 'admin') return '/dashboard/admin';
+  return '/dashboard/candidate';
+}
+
+function normalizeEmail(value: FormDataEntryValue | null) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function safeProfilePath(value: FormDataEntryValue | null) {
+  const raw = String(value || '');
+  if (!raw.startsWith('/') || raw.startsWith('//')) return '/register';
+  let url: URL;
+  try {
+    url = new URL(raw, 'http://local');
+  } catch {
+    return '/register';
+  }
+  if (url.pathname !== '/register') return '/register';
+  return url.searchParams.get('role') === 'recruiter' ? '/register?role=recruiter' : '/register';
+}
+
+async function needsProfile(supabase: ReturnType<typeof createClient>, userId: string) {
+  const { data: account } = await supabase.from('users').select('role').eq('id', userId).maybeSingle();
+  if (account?.role === 'admin') return false;
+
+  const [{ data: candidate }, { data: recruiter }] = await Promise.all([
+    supabase.from('candidate_profiles').select('user_id').eq('user_id', userId).maybeSingle(),
+    supabase.from('recruiter_profiles').select('user_id').eq('user_id', userId).maybeSingle(),
+  ]);
+
+  if (account?.role === 'recruiter') return !recruiter;
+  return !candidate && !recruiter;
+}
+
+async function completeAccountSetup(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  input: { email: string; role: string; firstName: string; lastName: string; companyName: string }
+) {
+  const { data: existing } = await supabase.from('users').select('id, role').eq('id', userId).maybeSingle();
+  if (!existing) {
+    const { error } = await supabase.from('users').insert({
+      id: userId,
+      email: input.email,
+      role: 'candidate',
+    });
+    if (error && error.code !== '23505') {
+      console.error('Error creating public user record:', error);
+      return { error: 'Error creating user profile' };
+    }
+  }
+
+  if (existing?.role !== 'admin' && input.role !== existing?.role) {
+    const { error } = await supabase.from('users').update({ role: input.role }).eq('id', userId);
+    if (error) return { error: error.message };
+  }
+
+  const { data: consent } = await supabase
+    .from('consent_records')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('consent_type', 'gdpr_privacy_policy')
+    .maybeSingle();
+  if (!consent) {
+    const hdrs = await headers();
+    await supabase.from('consent_records').insert({
+      user_id: userId,
+      consent_type: 'gdpr_privacy_policy',
+      is_granted: true,
+      ip_address: hdrs.get('x-forwarded-for')?.split(',')[0] || null,
+      user_agent: hdrs.get('user-agent')?.slice(0, 500) || null,
+    });
+  }
+
+  if (input.role === 'recruiter') {
+    const { data: recruiter } = await supabase
+      .from('recruiter_profiles')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (!recruiter && input.companyName) {
+      const { data: newCompany, error: compError } = await supabase.from('companies').insert({
+        name: input.companyName,
+        slug: uniqueCompanySlug(input.companyName),
+        industry: 'Other',
+        size_band: '1-10',
+      }).select().single();
+      if (compError) {
+        console.error('Company create error:', compError);
+        return { error: 'Account created, but company setup failed. Finish it in settings.' };
+      }
+      await supabase.from('recruiter_profiles').insert({
+        user_id: userId,
+        company_id: newCompany.id,
+        first_name: input.firstName,
+        last_name: input.lastName,
+      });
+    }
+    return { error: null };
+  }
+
+  const { data: candidate } = await supabase
+    .from('candidate_profiles')
+    .select('user_id')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (!candidate && input.firstName) {
+    const { error } = await supabase.from('candidate_profiles').insert({
+      user_id: userId,
+      first_name: input.firstName,
+      last_name: input.lastName,
+      is_profile_public: false,
+    });
+    if (error && error.code !== '23505') {
+      console.error('Candidate profile create error:', error);
+    }
+  }
+  return { error: null };
+}
+
+export async function sendSignInCode(formData: FormData) {
+  const email = normalizeEmail(formData.get('email'));
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: 'Enter a valid email address' };
+  }
+
+  const supabase = createClient(await cookies());
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: { shouldCreateUser: true },
+  });
+
+  if (error) return { error: error.message };
+  return { sent: true as const };
+}
+
+export async function verifySignInCode(formData: FormData) {
+  const email = normalizeEmail(formData.get('email'));
+  const token = String(formData.get('token') || '').replace(/\s/g, '');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return { error: 'Enter a valid email address' };
+  }
+  if (!/^\d{6,8}$/.test(token)) {
+    return { error: 'Enter the code from your email' };
+  }
+
+  const supabase = createClient(await cookies());
+  const { data, error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: 'email',
+  });
+
+  if (error || !data.user) {
+    return { error: error?.message || 'That code is invalid or expired' };
+  }
+
+  if (await needsProfile(supabase, data.user.id)) {
+    redirect(safeProfilePath(formData.get('next')));
+  }
+
+  const role = await getDbRole(supabase, data.user);
+  redirect(dashboardFor(role));
+}
+
+export async function completeProfile(formData: FormData) {
+  const consent = formData.get('consent') === 'on' || formData.get('consent') === 'true';
+  const parsed = validateRegisterInput({
+    role: formData.get('role') as string,
+    firstName: formData.get('firstName') as string,
+    lastName: formData.get('lastName') as string,
+    companyName: formData.get('companyName') as string,
+    consent,
+  });
+  if (parsed.error) return { error: parsed.error };
+
+  const supabase = createClient(await cookies());
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: 'Enter the email code before finishing your profile' };
+
+  const role = parsed.role as string;
+  const setup = await completeAccountSetup(supabase, user.id, {
+    email: user.email || '',
+    role,
+    firstName: String(formData.get('firstName') || ''),
+    lastName: String(formData.get('lastName') || ''),
+    companyName: String(formData.get('companyName') || ''),
+  });
+  if (setup.error) return setup;
+  redirect(dashboardFor(role));
+}
+
+function uniqueCompanySlug(name: string) {
+  const base = slugify(name) || 'company';
+  return `${base}-${Math.floor(Math.random() * 10000)}`;
+}
+
+export async function logout() {
+  const supabase = createClient(await cookies());
+  await supabase.auth.signOut();
+  redirect('/');
+}

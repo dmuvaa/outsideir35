@@ -1,104 +1,61 @@
-'use strict';
-
 'use client';
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { db } from '@/lib/db';
+import React, { useState, Suspense } from 'react';
+import { completeProfile, logout } from '@/app/actions/auth';
+import { useSearchParams } from 'next/navigation';
 
-export default function RegisterPage() {
-  const router = useRouter();
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'candidate' | 'recruiter'>('candidate');
+function RegisterForm() {
+  const searchParams = useSearchParams();
+  const [role, setRole] = useState<'candidate' | 'recruiter'>(searchParams?.get('role') === 'recruiter' ? 'recruiter' : 'candidate');
   const [gdprConsent, setGdprConsent] = useState(false);
   const [error, setError] = useState('');
+  const [isPending, setIsPending] = useState(false);
 
-  const handleRegisterSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!firstName || !lastName || !email || !password) {
-      setError('Please complete all form fields.');
-      return;
-    }
-    const name = `${firstName} ${lastName}`.trim();
+  async function handleRegisterSubmit(formData: FormData) {
+    setIsPending(true);
+    setError('');
+
     if (!gdprConsent) {
       setError('You must accept the privacy policy & GDPR consent checklist.');
+      setIsPending(false);
       return;
     }
 
-    try {
-      const user = await db.register(email, password, role);
+    formData.append('role', role);
+    formData.append('consent', 'true');
 
-      // Save profile baseline
-      if (role === 'candidate') {
-        const currentProfile = await db.getCandidateProfile();
-        await db.saveCandidateProfile({
-          ...currentProfile,
-          userId: user.id,
-          name: name,
-          email: email,
-          consent: [
-            ...currentProfile.consent,
-            { type: 'gdpr_privacy_policy', granted: true, ip: '192.168.1.1', date: new Date().toISOString() }
-          ]
-        });
-        router.push('/dashboard');
-      } else {
-        const currentRecruiter = await db.getRecruiterProfile();
-        await db.saveRecruiterProfile({
-          ...currentRecruiter,
-          userId: user.id,
-          name: name,
-          email: email
-        });
-        router.push('/employer');
-      }
-    } catch (err: any) {
-      setError(err.message || 'Registration failed.');
+    const result = await completeProfile(formData);
+
+    if (result && 'error' in result && result.error) {
+      setError(result.error);
+      setIsPending(false);
     }
-  };
+  }
 
   return (
     <div className="container fade-in" style={{ padding: '80px 0', display: 'flex', justifyContent: 'center' }}>
       <div className="glass-panel" style={{ width: '100%', maxWidth: '460px', padding: '40px', backgroundColor: 'var(--panel-bg-solid)' }}>
-        
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-          <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>Create contractor account</h2>
+          <h2 style={{ fontSize: '24px', fontFamily: 'var(--font-header)', marginBottom: '8px' }}>Finish your profile</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-            Join OutsideIR35 to assess compliance and search roles
+            Your email is already verified. Tell us how you will use OutsideIR35.
           </p>
         </div>
 
         {error && (
           <div style={{ padding: '10px 14px', backgroundColor: 'var(--color-inside-glow)', border: '1px solid var(--color-inside)', borderRadius: 'var(--radius-sm)', color: 'var(--color-inside)', fontSize: '13px', marginBottom: '20px' }}>
-            ⚠️ {error}
+            {error}
           </div>
         )}
-
-        <form onSubmit={handleRegisterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          
-          {/* Persona selector toggle */}
+        <form action={handleRegisterSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="filter-group">
             <label className="filter-title" style={{ fontSize: '11px' }}>Account Classification</label>
             <div style={{ display: 'flex', gap: '8px' }}>
-              <button 
-                type="button" 
-                onClick={() => setRole('candidate')}
-                className={`btn btn-sm ${role === 'candidate' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1 }}
-              >
-                👨‍💻 Candidate
+              <button type="button" onClick={() => setRole('candidate')} className={`btn btn-sm ${role === 'candidate' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }}>
+                Contractor
               </button>
-              <button 
-                type="button" 
-                onClick={() => setRole('recruiter')}
-                className={`btn btn-sm ${role === 'recruiter' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1 }}
-              >
-                💼 Employer / Recruiter
+              <button type="button" onClick={() => setRole('recruiter')} className={`btn btn-sm ${role === 'recruiter' ? 'btn-primary' : 'btn-secondary'}`} style={{ flex: 1 }}>
+                Employer / Recruiter
               </button>
             </div>
           </div>
@@ -106,70 +63,47 @@ export default function RegisterPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
             <div className="filter-group">
               <label className="filter-title" style={{ fontSize: '11px' }}>First Name</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Sarah"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                required
-              />
+              <input name="firstName" type="text" placeholder="e.g. Sarah" required />
             </div>
             <div className="filter-group">
               <label className="filter-title" style={{ fontSize: '11px' }}>Last Name</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Jenkins"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                required
-              />
+              <input name="lastName" type="text" placeholder="e.g. Jenkins" required />
             </div>
           </div>
 
-          <div className="filter-group">
-            <label className="filter-title" style={{ fontSize: '11px' }}>Email Address</label>
-            <input 
-              type="email" 
-              placeholder="e.g. contractor@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
+          {role === 'recruiter' && (
+            <div className="filter-group fade-in">
+              <label className="filter-title" style={{ fontSize: '11px' }}>Company Name</label>
+              <input name="companyName" type="text" placeholder="e.g. Tech Corp Ltd" required />
+            </div>
+          )}
 
-          <div className="filter-group">
-            <label className="filter-title" style={{ fontSize: '11px' }}>Secure Password</label>
-            <input 
-              type="password" 
-              placeholder="Minimum 8 characters"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          {/* GDPR / KDPA Consent Checkbox */}
           <label className="filter-checkbox-item" style={{ marginTop: '8px', alignItems: 'flex-start' }}>
-            <input 
-              type="checkbox" 
-              checked={gdprConsent} 
-              onChange={() => setGdprConsent(!gdprConsent)}
-              style={{ marginTop: '4px' }}
-            />
+            <input type="checkbox" checked={gdprConsent} onChange={() => setGdprConsent(!gdprConsent)} style={{ marginTop: '4px' }} />
             <span style={{ fontSize: '12px', lineHeight: '1.4', color: 'var(--text-secondary)' }}>
-              I agree to the privacy policy terms, consenting to the secure storage of my CV in private buckets and recording of audit consent logs.
+              I agree to the privacy policy, consenting to secure storage of my CV and a consent record for this account.
             </span>
           </label>
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '8px' }}>
-            Register Account
+          <button type="submit" disabled={isPending} className="btn btn-primary" style={{ width: '100%', marginTop: '8px' }}>
+            {isPending ? 'Saving...' : 'Continue'}
           </button>
         </form>
 
-        <p style={{ textAlign: 'center', marginTop: '24px', fontSize: '13px', color: 'var(--text-secondary)' }}>
-          Already have an account? <Link href="/login" style={{ color: 'var(--color-primary)', fontWeight: '600' }}>Login here</Link>
-        </p>
+        <form action={logout} style={{ textAlign: 'center', marginTop: '24px' }}>
+          <button type="submit" style={{ background: 'none', border: 'none', color: 'var(--color-primary)', fontWeight: 600, cursor: 'pointer', fontSize: '13px' }}>
+            Sign out and use a different email
+          </button>
+        </form>
       </div>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="container" style={{ padding: '80px 0', textAlign: 'center' }}>Loading...</div>}>
+      <RegisterForm />
+    </Suspense>
   );
 }

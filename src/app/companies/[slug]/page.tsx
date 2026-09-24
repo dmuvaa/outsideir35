@@ -1,160 +1,97 @@
-'use strict';
-
-'use client';
-
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import { db, Company, Job } from '@/lib/db';
+import type { Metadata } from 'next';
+import { getCompanyBySlugServer, getJobsServer } from '@/lib/server-data';
+import { notFound } from 'next/navigation';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-export default function CompanyDetailsPage({ params }: PageProps) {
-  const resolvedParams = React.use(params);
-  const slug = resolvedParams.slug;
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
+  const company = await getCompanyBySlugServer(slug);
+  if (!company) return { title: 'Company not found' };
+  return {
+    title: `${company.name} contracts | OutsideIR35`,
+    description: company.description?.slice(0, 160) || `Live contractor roles from ${company.name}.`,
+  };
+}
 
-  const [company, setCompany] = useState<Company | null>(null);
-  const [companyJobs, setCompanyJobs] = useState<Job[]>([]);
+export default async function CompanyDetailsPage({ params }: PageProps) {
+  const { slug } = await params;
+  const company = await getCompanyBySlugServer(slug);
+  if (!company) notFound();
 
-  useEffect(() => {
-    async function loadData() {
-      const foundCompany = await db.getCompanyBySlug(slug);
-      if (foundCompany) {
-        setCompany(foundCompany);
-        // Fetch open jobs for this company
-        const allJobs = await db.getJobs();
-        const jobs = allJobs.filter(j => j.companyId === foundCompany.id && j.status === 'active');
-        setCompanyJobs(jobs);
-      }
-    }
-    loadData();
-  }, [slug]);
-
-  if (!company) {
-    return (
-      <div className="container" style={{ padding: '80px 0', textAlign: 'center' }}>
-        <h2>Company profile not found</h2>
-        <p style={{ color: 'var(--text-secondary)', margin: '16px 0' }}>The company may have removed its profile.</p>
-        <Link href="/companies" className="btn btn-primary">Back to Directory</Link>
-      </div>
-    );
-  }
+  const jobs = (await getJobsServer()).filter((j) => j.companyId === company.id);
+  const outsideRatio = jobs.length
+    ? Math.round((jobs.filter((j) => j.ir35Status === 'outside').length / jobs.length) * 100)
+    : 0;
 
   return (
     <div className="container fade-in" style={{ padding: '40px 0' }}>
-      <Link href="/companies" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', marginBottom: '24px', fontSize: '14px', color: 'var(--text-secondary)' }}>
+      <Link href="/companies" style={{ display: 'inline-flex', marginBottom: '24px', fontSize: '14px', color: 'var(--text-secondary)' }}>
         &larr; Back to directory
       </Link>
 
-      {/* Hero Header Card */}
       <div className="glass-panel" style={{ padding: '32px', marginBottom: '32px' }}>
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: '64px', padding: '16px', background: 'rgba(255,255,255,0.03)', borderRadius: 'var(--radius-md)' }}>
-            {company.logo}
+          <span style={{ fontSize: '64px', width: '120px', height: '120px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+            {company.logo && (company.logo.startsWith('/') || company.logo.startsWith('http')) ? (
+              <img src={company.logo} alt={company.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            ) : (company.logo || '🏢')}
           </span>
-          <div style={{ flex: '1' }}>
+          <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '8px' }}>
               <h1 style={{ fontSize: '32px', fontFamily: 'var(--font-header)' }}>{company.name}</h1>
-              {company.verified && (
-                <span className="tag-badge tag-outside">Verified</span>
-              )}
+              {company.verified && <span className="tag-badge tag-outside">Verified</span>}
             </div>
-            <p style={{ color: 'var(--text-secondary)', fontSize: '15px', maxWidth: '600px' }}>
-              {company.industry} &bull; {company.location}
-            </p>
-            <div style={{ marginTop: '12px', display: 'flex', gap: '16px', fontSize: '13px' }}>
-              <a href={company.website} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', fontWeight: '600' }}>
-                🔗 Visit Website &raquo;
+            <p style={{ color: 'var(--text-secondary)' }}>{company.industry} {company.location ? `• ${company.location}` : ''}</p>
+            {company.website && (
+              <a href={company.website} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-primary)', fontWeight: 600, fontSize: '13px' }}>
+                Visit website
               </a>
-              <span style={{ color: 'var(--text-muted)' }}>|</span>
-              <span style={{ color: 'var(--text-muted)' }}>Staff Scale: {company.size} employees</span>
-            </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Two column detail layout */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '40px' }}>
-        {/* Left Col: Overview & Open Jobs */}
+      <div className="seo-two-col" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '40px' }}>
         <div>
           <div className="glass-panel" style={{ padding: '32px', marginBottom: '32px' }}>
             <h2 style={{ fontSize: '20px', marginBottom: '16px' }}>About {company.name}</h2>
-            <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6', marginBottom: '16px' }}>
-              {company.description}
-            </p>
-            <p style={{ color: 'var(--text-secondary)', lineHeight: '1.6' }}>
-              We collaborate with highly specialized contractors across multiple operational units. Our internal determinations ensure fast onboarding and contract compliance (complying fully with HMRC rules on substitution and mutuality of obligation).
-            </p>
+            <div style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }} dangerouslySetInnerHTML={{ __html: company.description || 'No company description yet.' }} />
           </div>
-
-          <div>
-            <h2 style={{ fontSize: '22px', marginBottom: '16px' }}>Active Contract Roles</h2>
-            {companyJobs.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {companyJobs.map((job) => (
-                  <div key={job.id} className="glass-panel glass-panel-hover job-card">
-                    <div className="job-card-header">
-                      <div>
-                        <h3 className="job-title">
-                          <Link href={`/jobs/${job.slug}`}>{job.title}</Link>
-                        </h3>
-                        <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                          📍 {job.location} &bull; 💻 {job.remoteType.toUpperCase()}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: '16px', fontWeight: '800', color: 'var(--text-primary)' }}>
-                          £{job.dayRateMin} - £{job.dayRateMax}
-                        </div>
-                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>per day</div>
-                      </div>
-                    </div>
-
-                    <div className="job-tags-row" style={{ marginTop: '12px' }}>
-                      <span className={`tag-badge ${job.ir35Status === 'outside' ? 'tag-outside' : 'tag-inside'}`} style={{ fontSize: '10px' }}>
-                        {job.ir35Status === 'outside' ? 'Outside IR35' : 'Inside IR35'}
-                      </span>
-                      {job.clearanceLevel !== 'none' && (
-                        <span className="tag-badge tag-clearance" style={{ fontSize: '10px' }}>
-                          Clearance: {job.clearanceLevel}
-                        </span>
-                      )}
-                      {job.skills.slice(0, 3).map((skill) => (
-                        <span key={skill} className="tag-badge tag-normal" style={{ fontSize: '10px' }}>{skill}</span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="glass-panel" style={{ padding: '32px', textAlign: 'center' }}>
-                <p style={{ color: 'var(--text-secondary)' }}>There are currently no active contract postings for this company.</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Col: Stats */}
-        <aside>
-          <div className="glass-panel" style={{ padding: '24px', marginBottom: '24px' }}>
-            <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>Employer Statistics</h3>
+          <h2 style={{ fontSize: '22px', marginBottom: '16px' }}>Active contract roles</h2>
+          {jobs.length > 0 ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>ACTIVE ROLES</div>
-                <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-primary)' }}>{companyJobs.length} postings</div>
-              </div>
-              <hr style={{ borderColor: 'var(--panel-border)' }} />
-              <div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>OUTSIDE IR35 COMPLIANCE RATIO</div>
-                <div style={{ fontSize: '24px', fontWeight: '800', color: 'var(--color-outside)' }}>92%</div>
-              </div>
-              <hr style={{ borderColor: 'var(--panel-border)' }} />
-              <div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>CONTRACT TERMS</div>
-                <div style={{ fontSize: '14px', fontWeight: '600', color: 'var(--text-primary)' }}>Typically 6 - 12 Months</div>
-              </div>
+              {jobs.map((job) => (
+                <div key={job.id} className="glass-panel glass-panel-hover job-card">
+                  <h3 className="job-title"><Link href={`/jobs/${job.slug}`}>{job.title}</Link></h3>
+                  <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{job.location} • {job.remoteType}</div>
+                  <div className="job-tags-row" style={{ marginTop: '12px' }}>
+                    <span className={`tag-badge ${job.ir35Status === 'outside' ? 'tag-outside' : 'tag-inside'}`}>
+                      {job.ir35Status === 'outside' ? 'Outside IR35' : 'Inside IR35'}
+                    </span>
+                    <span className="tag-badge tag-normal">£{job.dayRateMin}-{job.dayRateMax}/day</span>
+                  </div>
+                </div>
+              ))}
             </div>
+          ) : (
+            <div className="glass-panel" style={{ padding: '32px', textAlign: 'center' }}>
+              <p style={{ color: 'var(--text-secondary)' }}>No live contract postings for this company.</p>
+            </div>
+          )}
+        </div>
+        <aside>
+          <div className="glass-panel" style={{ padding: '24px' }}>
+            <h3 style={{ fontSize: '16px', marginBottom: '16px' }}>Listing stats</h3>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>ACTIVE ROLES</div>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--color-primary)' }}>{jobs.length}</div>
+            <hr style={{ borderColor: 'var(--panel-border)', margin: '16px 0' }} />
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>OUTSIDE IR35 SHARE</div>
+            <div style={{ fontSize: '24px', fontWeight: 800, color: 'var(--color-outside)' }}>{jobs.length ? `${outsideRatio}%` : '—'}</div>
           </div>
         </aside>
       </div>

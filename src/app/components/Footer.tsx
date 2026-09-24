@@ -1,26 +1,36 @@
-'use strict';
-
 'use client';
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { subscribeToJobAlerts } from '@/app/actions/job';
 
 export default function Footer() {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (email) {
-      setSubscribed(true);
-      setEmail('');
+    setError('');
+    const formData = new FormData();
+    formData.set('email', email);
+    const result = await subscribeToJobAlerts(formData);
+    if (result.redirect) {
+      window.location.href = result.redirect;
+      return;
     }
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    setSubscribed(true);
+    setEmail('');
   };
 
   return (
     <footer style={{
       marginTop: 'auto',
-      backgroundColor: 'rgba(6, 7, 19, 0.95)',
+      backgroundColor: 'var(--bg-color)',
       borderTop: '1px solid var(--panel-border)',
       padding: '64px 0 32px 0',
       fontSize: '14px',
@@ -104,25 +114,22 @@ export default function Footer() {
             </p>
             {subscribed ? (
               <div style={{ color: 'var(--color-outside)', fontWeight: '600', fontSize: '13px' }}>
-                ✓ You have subscribed successfully.
+                Alert saved. We will email matching Outside IR35 roles.
               </div>
             ) : (
-              <form onSubmit={handleSubscribe} style={{ display: 'flex', gap: '8px' }}>
+              <form onSubmit={handleSubscribe} style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <input
                   type="email"
                   placeholder="name@contractor.co.uk"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  style={{
-                    padding: '8px 12px',
-                    fontSize: '13px',
-                    flex: '1'
-                  }}
+                  style={{ padding: '8px 12px', fontSize: '13px', flex: '1' }}
                 />
                 <button type="submit" className="btn btn-primary btn-sm" style={{ padding: '8px 12px' }}>
                   Subscribe
                 </button>
+                {error && <div style={{ width: '100%', fontSize: '12px', color: 'var(--color-inside)' }}>{error}</div>}
               </form>
             )}
           </div>
@@ -145,8 +152,8 @@ export default function Footer() {
           </div>
           <div style={{ display: 'flex', gap: '24px' }}>
             <Link href="/guides/what-is-ir35-guide">IR35 Guide</Link>
-            <Link href="/blog/write-outside-ir35-compliant-contract">Compliance Clauses</Link>
-            <Link href="/dashboard?tab=settings">Privacy Settings & Consent Logs</Link>
+            <Link href="/blog">Blog</Link>
+            <Link href="/dashboard/candidate/settings">Privacy settings</Link>
           </div>
         </div>
       </div>
